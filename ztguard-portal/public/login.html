@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZTGuard Portal — Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --dark:   #0a0f1e;
+  --dark2:  #0d1526;
+  --dark3:  #111d35;
+  --blue:   #2563eb;
+  --blue2:  #3b82f6;
+  --blue3:  #93c5fd;
+  --cyan:   #06b6d4;
+  --green:  #10b981;
+  --red:    #ef4444;
+  --border: rgba(59,130,246,0.2);
+}
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--dark);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+body::before {
+  content: '';
+  position: absolute;
+  top: -200px; right: -200px;
+  width: 600px; height: 600px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(37,99,235,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+body::after {
+  content: '';
+  position: absolute;
+  bottom: -150px; left: -150px;
+  width: 500px; height: 500px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(6,182,212,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.login-wrap {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 420px;
+  padding: 0 20px;
+}
+.logo-area {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.logo-badge {
+  display: inline-flex; align-items: center; gap: 10px;
+  text-decoration: none;
+}
+.logo-icon {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 800; color: #fff;
+}
+.logo-text {
+  font-size: 22px; font-weight: 700;
+  color: #fff; letter-spacing: -0.5px;
+}
+.logo-text span { color: var(--blue3); }
+.login-card {
+  background: var(--dark2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px 32px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.card-title {
+  font-size: 20px; font-weight: 700; color: #fff;
+  margin-bottom: 4px;
+}
+.card-sub {
+  font-size: 13px; color: rgba(255,255,255,0.45);
+  margin-bottom: 28px;
+}
+label {
+  display: block;
+  font-size: 12px; font-weight: 600;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 0.5px; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+input[type="password"] {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 15px; font-family: inherit;
+  color: #fff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+input[type="password"]:focus {
+  border-color: var(--blue2);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.btn-signin {
+  width: 100%; margin-top: 24px;
+  padding: 13px;
+  background: var(--blue);
+  border: none; border-radius: 10px;
+  color: #fff; font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.btn-signin:hover { background: var(--blue2); }
+.btn-signin:active { transform: scale(0.98); }
+.btn-signin:disabled { opacity: 0.6; cursor: not-allowed; }
+.error-msg {
+  margin-top: 16px;
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px; color: #fca5a5;
+  display: none;
+}
+.error-msg.show { display: block; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%,60% { transform: translateX(-6px); }
+  40%,80% { transform: translateX(6px); }
+}
+.card-shake { animation: shake 0.4s ease; }
+.footer-note {
+  text-align: center; margin-top: 20px;
+  font-size: 12px; color: rgba(255,255,255,0.25);
+}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="logo-area">
+    <div class="logo-badge">
+      <div class="logo-icon">Z</div>
+      <div class="logo-text">ZT<span>Guard</span></div>
+    </div>
+  </div>
+
+  <div class="login-card" id="loginCard">
+    <div class="card-title">Extended Settings</div>
+    <div class="card-sub">Sign in to access enterprise features</div>
+
+    <form id="loginForm" autocomplete="off">
+      <label for="password">Admin Password</label>
+      <input type="password" id="password" name="password"
+             placeholder="Enter admin password" autofocus required>
+
+      <button type="submit" class="btn-signin" id="signInBtn">Sign In</button>
+    </form>
+
+    <div class="error-msg" id="errorMsg">Incorrect password. Please try again.</div>
+  </div>
+
+  <div class="footer-note">ZTGuard Extended Settings Portal</div>
+</div>
+
+<script>
+const BASE = (document.currentScript && document.currentScript.dataset.base) || '/ztguard';
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('signInBtn');
+  const err = document.getElementById('errorMsg');
+  const card = document.getElementById('loginCard');
+  const pw = document.getElementById('password').value;
+
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  err.classList.remove('show');
+
+  try {
+    const resp = await fetch('/ztguard/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      window.location.href = data.redirect || '/ztguard/';
+    } else {
+      err.classList.add('show');
+      card.classList.add('card-shake');
+      setTimeout(() => card.classList.remove('card-shake'), 500);
+      document.getElementById('password').value = '';
+      document.getElementById('password').focus();
+    }
+  } catch (_) {
+    err.textContent = 'Connection error. Please try again.';
+    err.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+});
+</script>
+</body>
+</html>

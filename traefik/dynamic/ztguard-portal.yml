@@ -1,0 +1,19 @@
+# Traefik Dynamic Config — ZTGuard Extended Settings Portal
+# Deploy this file to: /opt/pangolin/traefik/dynamic/ztguard-portal.yml
+# Traefik picks it up automatically (no restart needed).
+
+http:
+  routers:
+    ztguard-portal:
+      rule: "Host(`pangolin.test01.ztguard.net`) && PathPrefix(`/ztguard`)"
+      entryPoints:
+        - websecure
+      service: ztguard-portal
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    ztguard-portal:
+      loadBalancer:
+        servers:
+          - url: "http://ztguard-portal:3100"

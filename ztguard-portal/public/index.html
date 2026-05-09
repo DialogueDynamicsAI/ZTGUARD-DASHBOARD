@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZTGuard — Extended Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ztguard/static/css/style.css">
+</head>
+<body>
+
+<!-- ─── SIDEBAR ──────────────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <a class="sidebar-logo" href="/ztguard/">
+    <div class="logo-icon">Z</div>
+    <div>
+      <div class="logo-name">ZT<span>Guard</span></div>
+      <div class="logo-sub">Extended Settings</div>
+    </div>
+  </a>
+
+  <div class="nav-section">Dashboard</div>
+  <button class="nav-item" onclick="navigate('dashboard')" id="nav-dashboard">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+    </svg>
+    Overview
+  </button>
+
+  <div class="nav-section">Logs &amp; Analytics</div>
+  <button class="nav-item" onclick="navigate('event-streaming')" id="nav-event-streaming">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M7 16l-4-4m0 0l4-4m-4 4h18M17 8l4 4m0 0l-4 4m4-4H3"/>
+    </svg>
+    Event Streaming
+  </button>
+  <button class="nav-item" onclick="navigate('delivery-history')" id="nav-delivery-history">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+    </svg>
+    Delivery History
+  </button>
+
+  <div class="nav-section">Management</div>
+  <button class="nav-item" onclick="navigate('branding')" id="nav-branding">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+    </svg>
+    Branding
+  </button>
+  <button class="nav-item nav-item--soon" onclick="comingSoon('Alerting')" id="nav-alerting">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+    </svg>
+    Alerting
+    <span class="nav-badge gray">Soon</span>
+  </button>
+  <button class="nav-item nav-item--soon" onclick="comingSoon('Provisioning')" id="nav-provisioning">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+    </svg>
+    Provisioning
+    <span class="nav-badge gray">Soon</span>
+  </button>
+  <button class="nav-item nav-item--soon" onclick="comingSoon('Blueprints')" id="nav-blueprints">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>
+    Blueprints
+    <span class="nav-badge gray">Soon</span>
+  </button>
+
+  <div class="nav-section">System</div>
+  <button class="nav-item" onclick="navigate('settings')" id="nav-settings">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+    </svg>
+    Connection Settings
+  </button>
+
+  <div class="sidebar-footer">
+    <div class="user-row">
+      <div class="user-avatar">A</div>
+      <div class="user-info">
+        <div class="user-name">Administrator</div>
+        <div class="user-role">Full Access</div>
+      </div>
+      <button class="btn-logout" onclick="logout()" title="Sign out">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ─── MAIN ───────────────────────────────────────────────────────────────── -->
+<div class="main">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div>
+      <div class="page-title" id="topbarTitle">Overview</div>
+      <div class="page-sub" id="topbarSub">ZTGuard Extended Settings Portal</div>
+    </div>
+    <div class="topbar-actions" id="topbarActions"></div>
+  </div>
+
+  <!-- PAGES -->
+  <div class="content">
+
+    <!-- DASHBOARD PAGE -->
+    <div class="page active" id="page-dashboard">
+      <div class="stat-grid" id="statGrid">
+        <div class="stat-card">
+          <div class="stat-label">Active Destinations</div>
+          <div class="stat-value" id="stat-destinations">—</div>
+          <div class="stat-hint">Event Streaming targets</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Events Delivered</div>
+          <div class="stat-value" id="stat-delivered">—</div>
+          <div class="stat-hint">All time</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Delivery Success</div>
+          <div class="stat-value" id="stat-success">—</div>
+          <div class="stat-hint">HTTP 2xx responses</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Poll Interval</div>
+          <div class="stat-value" id="stat-poll">—</div>
+          <div class="stat-hint">Seconds</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Connection Status</h3>
+          <span class="pill pill-gray" id="apiStatus">Checking…</span>
+        </div>
+        <div class="card-body">
+          <div class="alert alert-info">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <strong>ZTGuard Extended Settings</strong> polls the Pangolin API to forward log events to your configured destinations.
+              Configure your Pangolin API key in <button class="btn btn-ghost btn-sm" style="display:inline;padding:0 4px" onclick="navigate('settings')">Connection Settings</button> to get started.
+            </div>
+          </div>
+          <div id="cursorTable"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENT STREAMING PAGE -->
+    <div class="page" id="page-event-streaming"></div>
+
+    <!-- DELIVERY HISTORY PAGE -->
+    <div class="page" id="page-delivery-history"></div>
+
+    <!-- BRANDING PAGE -->
+    <div class="page" id="page-branding"></div>
+
+    <!-- SETTINGS PAGE -->
+    <div class="page" id="page-settings">
+      <div class="card" style="max-width:600px">
+        <div class="card-header"><h3>Pangolin API Connection</h3></div>
+        <div class="card-body">
+          <div class="alert alert-info">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            These values are loaded from the server's <code>.env</code> file. Update the file and restart the container to change them.
+          </div>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:8px 0;font-weight:600;width:200px;color:#64748b;font-size:13px">API URL</td><td id="cfg-api-url" style="font-size:13px;font-family:monospace;word-break:break-all">Loading…</td></tr>
+            <tr><td style="padding:8px 0;font-weight:600;color:#64748b;font-size:13px">Org ID</td><td id="cfg-org-id" style="font-size:13px;font-family:monospace">Loading…</td></tr>
+            <tr><td style="padding:8px 0;font-weight:600;color:#64748b;font-size:13px">API Key</td><td id="cfg-api-key" style="font-size:13px;font-family:monospace">Loading…</td></tr>
+            <tr><td style="padding:8px 0;font-weight:600;color:#64748b;font-size:13px">Poll Interval</td><td id="cfg-poll" style="font-size:13px">Loading…</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ─── TOAST CONTAINER ──────────────────────────────────────────────────── -->
+<div id="toastContainer"></div>
+
+<!-- ─── SCRIPTS ──────────────────────────────────────────────────────────── -->
+<script src="/ztguard/static/js/app.js"></script>
+<script src="/ztguard/static/js/event-streaming.js"></script>
+<script src="/ztguard/static/js/branding.js"></script>
+</body>
+</html>
