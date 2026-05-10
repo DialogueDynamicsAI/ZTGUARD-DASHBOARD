@@ -59,6 +59,77 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT
   );
+
+  -- ── Alerting & Health Checks ─────────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS health_checks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id       TEXT    NOT NULL DEFAULT 'default',
+    name         TEXT    NOT NULL,
+    type         TEXT    NOT NULL DEFAULT 'http',
+    target       TEXT    NOT NULL,
+    method       TEXT    DEFAULT 'GET',
+    expected_status INTEGER DEFAULT 200,
+    keyword      TEXT,
+    interval_sec INTEGER DEFAULT 60,
+    timeout_sec  INTEGER DEFAULT 10,
+    enabled      INTEGER DEFAULT 1,
+    last_status  TEXT    DEFAULT 'unknown',
+    last_checked TEXT,
+    created_at   TEXT    DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS health_check_history (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    check_id     INTEGER REFERENCES health_checks(id) ON DELETE CASCADE,
+    org_id       TEXT,
+    status       TEXT NOT NULL,
+    response_ms  INTEGER,
+    error        TEXT,
+    checked_at   TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS alert_rules (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id       TEXT    NOT NULL DEFAULT 'default',
+    name         TEXT    NOT NULL,
+    source_type  TEXT    NOT NULL,
+    source_id    TEXT    DEFAULT 'all',
+    trigger      TEXT    NOT NULL,
+    cooldown_sec INTEGER DEFAULT 0,
+    enabled      INTEGER DEFAULT 1,
+    last_fired   TEXT,
+    created_at   TEXT    DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS alert_actions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id      INTEGER REFERENCES alert_rules(id) ON DELETE CASCADE,
+    action_type  TEXT    NOT NULL,
+    config       TEXT    NOT NULL DEFAULT '{}'
+  );
+
+  CREATE TABLE IF NOT EXISTS alert_history (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id       TEXT,
+    rule_id      INTEGER,
+    rule_name    TEXT,
+    source_type  TEXT,
+    source_name  TEXT,
+    trigger      TEXT,
+    state        TEXT,
+    action_type  TEXT,
+    action_result TEXT,
+    fired_at     TEXT    DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS alert_last_state (
+    org_id       TEXT    NOT NULL,
+    entity_type  TEXT    NOT NULL,
+    entity_id    TEXT    NOT NULL,
+    last_status  TEXT,
+    last_seen    TEXT,
+    PRIMARY KEY (org_id, entity_type, entity_id)
+  );
 `);
 
 // ── Safe migrations for existing installs ──────────────────────────────────

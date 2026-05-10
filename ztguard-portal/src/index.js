@@ -14,7 +14,9 @@ const historyRoutes = require('./routes/history');
 const brandingRoutes = require('./routes/branding');
 const activityRoutes = require('./routes/activity');
 const orgsRoutes = require('./routes/orgs');
+const alertingRoutes = require('./routes/alerting');
 const { startPoller } = require('./poller');
+const { startAlerter } = require('./alerter');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -92,6 +94,7 @@ app.get(BASE + '/api/branding/logo', (req, res) => {
 
 // ── Protected API routes ──────────────────────────────────────────────────────
 app.use(BASE + '/api/orgs',         requireAuth, injectActiveOrg, orgsRoutes);
+app.use(BASE + '/api/alerting',     requireAuth, injectActiveOrg, alertingRoutes);
 app.use(BASE + '/api/destinations', requireAuth, injectActiveOrg, destinationRoutes);
 app.use(BASE + '/api/history',      requireAuth, injectActiveOrg, historyRoutes);
 app.use(BASE + '/api/activity',     requireAuth, injectActiveOrg, activityRoutes);
@@ -134,4 +137,5 @@ app.listen(PORT, () => {
   console.log(`[server] ZTGuard Portal running on port ${PORT}`);
   console.log(`[server] Base path: ${BASE}, Default org: ${DEFAULT_ORG}`);
   startPoller();
+  startAlerter();
 });

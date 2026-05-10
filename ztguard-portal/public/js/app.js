@@ -4,6 +4,7 @@ const BASE = '/ztguard';
 const PAGE_META = {
   'dashboard':        { title: 'Overview',            sub: 'ZTGuard Extended Settings Portal' },
   'auth-activity':    { title: 'Authentication Activity', sub: 'Who accessed what, when — user billing count' },
+  'alerting':         { title: 'Alerting',                sub: 'Alert rules, health checks, and notifications' },
   'event-streaming':  { title: 'Event Streaming',     sub: 'Forward log events to external destinations' },
   'delivery-history': { title: 'Delivery History',    sub: 'Event forwarding activity log' },
   'branding':         { title: 'Branding',            sub: 'Customize your Pangolin organization appearance' },
@@ -37,6 +38,7 @@ function navigate(page) {
   // Fire page init
   if (page === 'dashboard')        initDashboard();
   if (page === 'auth-activity')    initAuthActivity();
+  if (page === 'alerting')         initAlerting();
   if (page === 'event-streaming')  initEventStreaming();
   if (page === 'delivery-history') initDeliveryHistory();
   if (page === 'branding')         initBranding();
