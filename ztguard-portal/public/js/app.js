@@ -3,6 +3,7 @@ const BASE = '/ztguard';
 
 const PAGE_META = {
   'dashboard':        { title: 'Overview',            sub: 'ZTGuard Extended Settings Portal' },
+  'auth-activity':    { title: 'Authentication Activity', sub: 'Who accessed what, when — user billing count' },
   'event-streaming':  { title: 'Event Streaming',     sub: 'Forward log events to external destinations' },
   'delivery-history': { title: 'Delivery History',    sub: 'Event forwarding activity log' },
   'branding':         { title: 'Branding',            sub: 'Customize your Pangolin organization appearance' },
@@ -35,6 +36,7 @@ function navigate(page) {
 
   // Fire page init
   if (page === 'dashboard')        initDashboard();
+  if (page === 'auth-activity')    initAuthActivity();
   if (page === 'event-streaming')  initEventStreaming();
   if (page === 'delivery-history') initDeliveryHistory();
   if (page === 'branding')         initBranding();
@@ -155,9 +157,84 @@ function onModalOverlayClick(e, id) {
   if (e.target.id === id) closeModal(id);
 }
 
+/* ─── Org Switcher ──────────────────────────────────────────────────────── */
+let orgs = [];
+let activeOrgId = null;
+
+async function initOrgs() {
+  try {
+    const [orgList, active] = await Promise.all([
+      fetch(`${BASE}/api/orgs`, { headers: { 'Content-Type': 'application/json' } }).then(r => r.json()),
+      fetch(`${BASE}/api/orgs/active`, { headers: { 'Content-Type': 'application/json' } }).then(r => r.json()),
+    ]);
+    orgs = orgList;
+    activeOrgId = active.orgId;
+
+    const nameEl = document.getElementById('activeOrgName');
+    if (nameEl) nameEl.textContent = active.name || active.orgId;
+
+    const items = document.getElementById('orgMenuItems');
+    if (items) {
+      items.innerHTML = orgs.map(o => `
+        <button onclick="switchOrg('${o.orgId}')"
+          style="width:100%;background:${o.orgId === activeOrgId ? 'rgba(16,185,129,0.1)' : 'transparent'};border:none;padding:9px 14px;text-align:left;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:background .1s">
+          <div style="width:6px;height:6px;border-radius:50%;background:${o.orgId === activeOrgId ? '#10b981' : 'rgba(255,255,255,0.2)'};flex-shrink:0"></div>
+          <span style="font-size:12px;font-weight:${o.orgId === activeOrgId ? '700' : '500'};color:${o.orgId === activeOrgId ? '#10b981' : 'rgba(255,255,255,0.7)'}">${o.name || o.orgId}</span>
+          ${o.orgId === activeOrgId ? '<span style="margin-left:auto;font-size:10px;color:#10b981">active</span>' : ''}
+        </button>
+      `).join('');
+    }
+  } catch (err) {
+    console.warn('[orgs] Failed to load orgs:', err.message);
+  }
+}
+
+function toggleOrgMenu() {
+  const menu = document.getElementById('orgMenu');
+  const chevron = document.getElementById('orgChevron');
+  if (!menu) return;
+  const isOpen = menu.style.display !== 'none';
+  menu.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+async function switchOrg(orgId) {
+  if (orgId === activeOrgId) { toggleOrgMenu(); return; }
+  try {
+    const r = await fetch(`${BASE}/api/orgs/switch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId }),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast(`Switched to org: ${orgId}`, 'success');
+      toggleOrgMenu();
+      activeOrgId = orgId;
+      await initOrgs();
+      // Reload current page data
+      navigate(currentPage);
+    }
+  } catch (err) {
+    showToast('Failed to switch org: ' + err.message, 'error');
+  }
+}
+
+// Close org menu when clicking outside
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('orgSwitcherWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    const menu = document.getElementById('orgMenu');
+    const chevron = document.getElementById('orgChevron');
+    if (menu) menu.style.display = 'none';
+    if (chevron) chevron.style.transform = '';
+  }
+});
+
 /* ─── Boot ──────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   const path = window.location.pathname.replace(BASE, '').replace(/^\//, '') || 'dashboard';
   const page = PAGE_META[path] ? path : 'dashboard';
+  initOrgs();
   navigate(page);
 });

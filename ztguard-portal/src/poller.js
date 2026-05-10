@@ -4,22 +4,10 @@ const { forwardEvents } = require('./forwarder');
 
 const LOG_TYPES = ['request', 'action', 'access', 'connection'];
 
-const getCursor = db.prepare(`SELECT last_ts FROM cursors WHERE log_type = ?`);
-const setCursor = db.prepare(
-  `UPDATE cursors SET last_ts = ?, updated_at = datetime('now') WHERE log_type = ?`
-);
-
-async function pollLogType(logType) {
-  const apiUrl = process.env.PANGOLIN_API_URL;
-  const apiKey = process.env.PANGOLIN_API_KEY;
-  const orgId = process.env.PANGOLIN_ORG_ID;
-
-  if (!apiUrl || !apiKey || !orgId) {
-    console.warn('[poller] Missing PANGOLIN_API_URL, PANGOLIN_API_KEY, or PANGOLIN_ORG_ID — skipping poll');
-    return;
-  }
-
-  const cursor = getCursor.get(logType);
+async function pollLogTypeForOrg(orgId, logType, apiUrl, apiKey) {
+  const cursor = db.prepare(
+    `SELECT last_ts FROM cursors WHERE org_id = ? AND log_type = ?`
+  ).get(orgId, logType);
   const since = cursor ? cursor.last_ts : 0;
 
   const url = `${apiUrl}/org/${orgId}/logs/${logType}?limit=200&start=${since}`;
@@ -31,50 +19,69 @@ async function pollLogType(logType) {
     });
 
     if (resp.status === 401) {
-      console.error('[poller] Pangolin API key rejected (401). Check PANGOLIN_API_KEY.');
+      console.error(`[poller:${orgId}] API key rejected (401). Check PANGOLIN_API_KEY.`);
       return;
     }
     if (resp.status === 403) {
-      console.warn(`[poller] Log type "${logType}" not available in this Pangolin edition (403). Skipping.`);
+      console.warn(`[poller:${orgId}] Log type "${logType}" not available in this edition (403). Skipping.`);
       return;
     }
     if (!resp.ok) {
-      console.error(`[poller] ${logType} → HTTP ${resp.status}`);
+      console.error(`[poller:${orgId}] ${logType} → HTTP ${resp.status}`);
       return;
     }
 
     const data = await resp.json();
     const items = data.data?.items || data.items || [];
-
     if (items.length === 0) return;
 
-    // Update cursor to latest timestamp in this batch
     const latest = Math.max(...items.map(i => i.timestamp || 0));
     if (latest > since) {
-      setCursor.run(latest + 1, logType);
+      db.prepare(
+        `UPDATE cursors SET last_ts = ?, updated_at = datetime('now') WHERE org_id = ? AND log_type = ?`
+      ).run(latest + 1, orgId, logType);
     }
 
-    console.log(`[poller] ${logType} → ${items.length} new events`);
-    await forwardEvents(logType, items);
+    console.log(`[poller:${orgId}] ${logType} → ${items.length} new events`);
+    await forwardEvents(orgId, logType, items);
   } catch (err) {
-    console.error(`[poller] ${logType} → fetch error: ${err.message}`);
+    console.error(`[poller:${orgId}] ${logType} → fetch error: ${err.message}`);
   }
 }
 
 async function pollAll() {
-  for (const logType of LOG_TYPES) {
-    await pollLogType(logType);
+  const apiUrl = process.env.PANGOLIN_API_URL;
+  const apiKey = process.env.PANGOLIN_API_KEY;
+
+  if (!apiUrl || !apiKey) {
+    console.warn('[poller] Missing PANGOLIN_API_URL or PANGOLIN_API_KEY — skipping poll');
+    return;
+  }
+
+  // Get all distinct orgs that have at least one active destination
+  const orgsWithDests = db.prepare(
+    `SELECT DISTINCT org_id FROM destinations WHERE active = 1`
+  ).all().map(r => r.org_id);
+
+  // Also always include the default org (configured via env) for cursor seeding
+  const defaultOrg = process.env.PANGOLIN_ORG_ID;
+  if (defaultOrg && !orgsWithDests.includes(defaultOrg)) {
+    orgsWithDests.push(defaultOrg);
+  }
+
+  if (orgsWithDests.length === 0) return;
+
+  for (const orgId of orgsWithDests) {
+    for (const logType of LOG_TYPES) {
+      await pollLogTypeForOrg(orgId, logType, apiUrl, apiKey);
+    }
   }
 }
 
 function startPoller() {
   const intervalSec = parseInt(process.env.POLL_INTERVAL_SECONDS || '30', 10);
   console.log(`[poller] Starting — polling every ${intervalSec}s`);
-
-  // Initial poll after 5s startup delay
   setTimeout(() => pollAll(), 5000);
-
-  // Recurring poll
   setInterval(() => pollAll(), intervalSec * 1000);
 }
 

@@ -20,6 +20,22 @@
     </div>
   </a>
 
+  <!-- Org Switcher -->
+  <div class="org-switcher-wrap" id="orgSwitcherWrap" style="margin:10px 8px 4px;position:relative">
+    <button id="orgSwitcherBtn" onclick="toggleOrgMenu()"
+      style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;transition:background .15s">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <div style="width:7px;height:7px;background:#10b981;border-radius:50%;flex-shrink:0"></div>
+        <span id="activeOrgName" style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Loading…</span>
+      </div>
+      <svg id="orgChevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;color:rgba(255,255,255,0.4);flex-shrink:0;transition:transform .15s"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+    </button>
+    <div id="orgMenu" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#0d1526;border:1px solid rgba(59,130,246,0.25);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:200;overflow:hidden;max-height:200px;overflow-y:auto">
+      <div style="padding:6px 10px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);letter-spacing:0.8px;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,0.08)">Organizations</div>
+      <div id="orgMenuItems"></div>
+    </div>
+  </div>
+
   <div class="nav-section">Dashboard</div>
   <button class="nav-item" onclick="navigate('dashboard')" id="nav-dashboard">
     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -29,6 +45,12 @@
   </button>
 
   <div class="nav-section">Logs &amp; Analytics</div>
+  <button class="nav-item" onclick="navigate('auth-activity')" id="nav-auth-activity">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+    </svg>
+    Auth Activity
+  </button>
   <button class="nav-item" onclick="navigate('event-streaming')" id="nav-event-streaming">
     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 16l-4-4m0 0l4-4m-4 4h18M17 8l4 4m0 0l-4 4m4-4H3"/>
@@ -156,6 +178,9 @@
       </div>
     </div>
 
+    <!-- AUTH ACTIVITY PAGE -->
+    <div class="page" id="page-auth-activity"></div>
+
     <!-- EVENT STREAMING PAGE -->
     <div class="page" id="page-event-streaming"></div>
 
@@ -193,7 +218,9 @@
 <div id="toastContainer"></div>
 
 <!-- ─── SCRIPTS ──────────────────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="/ztguard/static/js/app.js"></script>
+<script src="/ztguard/static/js/auth-activity.js"></script>
 <script src="/ztguard/static/js/event-streaming.js"></script>
 <script src="/ztguard/static/js/branding.js"></script>
 </body>

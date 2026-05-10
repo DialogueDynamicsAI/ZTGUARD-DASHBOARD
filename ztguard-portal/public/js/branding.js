@@ -26,6 +26,8 @@ function renderBrandingPage() {
   const customCss = brandingConfig.custom_css || '';
   const customHeaderHtml = brandingConfig.custom_header_html || '';
   const customFooterHtml = brandingConfig.custom_footer_html || '';
+  const loginTheme = brandingConfig.login_theme || 'dark';
+  const hideAttr = brandingConfig.hide_attribution !== '0';
 
   page.innerHTML = `
     <div class="branding-layout">
@@ -131,6 +133,38 @@ function renderBrandingPage() {
                   placeholder="Choose your preferred authentication method" oninput="livePreview()">
               </div>
               <div class="form-group">
+                <label class="form-label">Pangolin Attribution</label>
+                <label class="toggle" style="cursor:pointer">
+                  <input type="checkbox" id="brHideAttribution" ${hideAttr ? 'checked' : ''}
+                    onchange="document.getElementById('brHideAttrVal').value=this.checked?'1':'0'">
+                  <div class="toggle-track"></div>
+                  <span class="toggle-label" style="font-size:13px;font-weight:500">Hide "Powered by Pangolin" and supporter notices</span>
+                </label>
+                <input type="hidden" id="brHideAttrVal" value="${hideAttr ? '1' : '0'}">
+                <div class="form-hint" style="margin-top:6px">Removes Pangolin branding from all resource auth pages.</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Login Page Theme</label>
+                <div style="display:flex;gap:8px;margin-top:4px">
+                  <button type="button" id="themeLight"
+                    onclick="setLoginTheme('light')"
+                    class="theme-btn ${loginTheme==='light'?'active':''}"
+                    style="flex:1;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid ${loginTheme==='light'?'#2563eb':'#e2e8f0'};background:${loginTheme==='light'?'rgba(37,99,235,0.08)':'#fff'};color:${loginTheme==='light'?'#2563eb':'#64748b'};font-family:inherit;transition:all .15s">
+                    ☀️ Light Mode
+                  </button>
+                  <button type="button" id="themeDark"
+                    onclick="setLoginTheme('dark')"
+                    class="theme-btn ${loginTheme==='dark'?'active':''}"
+                    style="flex:1;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid ${loginTheme==='dark'?'#10b981':'#e2e8f0'};background:${loginTheme==='dark'?'rgba(10,15,30,0.08)':'#fff'};color:${loginTheme==='dark'?'#10b981':'#64748b'};font-family:inherit;transition:all .15s">
+                    🌙 Dark Mode
+                  </button>
+                </div>
+                <div class="form-hint">Applies to the Pangolin <code>/auth/login</code> page immediately on save.</div>
+                <input type="hidden" id="brLoginTheme" value="${loginTheme}">
+              </div>
+
+              <div class="form-group">
                 <label class="form-label">Custom Login Page URL Override</label>
                 <input class="form-input" id="brLoginUrl" value="${escHtml(brandingConfig.login_url || '')}"
                   placeholder="https://auth.example.com/login (optional)">
@@ -196,6 +230,43 @@ button.primary { border-radius: 8px; }"
 
         <!-- PANGOLIN SYNC TAB -->
         <div class="br-tab-body ${activeTab==='pangolin'?'active':''}" id="brtab-pangolin">
+
+          <!-- Live Auth Page Status -->
+          <div class="card" style="margin-bottom:16px;border-left:4px solid #10b981">
+            <div class="card-header">
+              <h3 style="color:#059669">Resource Auth Page Status</h3>
+              <span class="pill pill-green">Live</span>
+            </div>
+            <div class="card-body">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+                <div id="attrStatusCard" style="background:${brandingConfig.js_attribution_hidden?'#f0fdf4':'#fef2f2'};border:1px solid ${brandingConfig.js_attribution_hidden?'#a7f3d0':'#fecaca'};border-radius:8px;padding:12px">
+                  <div style="font-size:11px;font-weight:700;color:${brandingConfig.js_attribution_hidden?'#065f46':'#991b1b'};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Attribution</div>
+                  <div style="font-size:13px;font-weight:600;color:${brandingConfig.js_attribution_hidden?'#059669':'#ef4444'}">${brandingConfig.js_attribution_hidden?'Hidden ✓':'Visible'}</div>
+                  <div style="font-size:11px;color:#6b7280;margin-top:2px">${brandingConfig.js_attribution_hidden?'Powered by + Supporter key removed':'Toggle above to hide'}</div>
+                </div>
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">
+                  <div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Login Theme</div>
+                  <div style="font-size:13px;font-weight:600;color:#2563eb">${loginTheme === 'dark' ? 'Dark Mode' : 'Light Mode'}</div>
+                  <div style="font-size:11px;color:#6b7280;margin-top:2px">Toggle in Identity tab</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <a href="https://portal.srmanpower.net/" target="_blank" class="btn btn-primary btn-sm">
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                  Open Resource Auth Page
+                </a>
+                <a href="https://pangolin.test01.ztguard.net/auth/login" target="_blank" class="btn btn-secondary btn-sm">
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                  Open Pangolin Login
+                </a>
+                <a href="https://pangolin.test01.ztguard.net" target="_blank" class="btn btn-secondary btn-sm">
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                  Pangolin Dashboard
+                </a>
+              </div>
+            </div>
+          </div>
+
           <div class="card">
             <div class="card-header"><h3>Sync to Pangolin API</h3></div>
             <div class="card-body">
@@ -210,6 +281,7 @@ button.primary { border-radius: 8px; }"
                 <tr><td class="sync-label">Auth Page Title</td><td><span class="pill pill-gray">Stored locally</span></td></tr>
                 <tr><td class="sync-label">Auth Page Subtitle</td><td><span class="pill pill-gray">Stored locally</span></td></tr>
                 <tr><td class="sync-label">Custom CSS / HTML</td><td><span class="pill pill-gray">Stored locally</span></td></tr>
+                <tr><td class="sync-label">Hide Attribution</td><td><span class="pill pill-green">Active (JS patch)</span></td></tr>
               </table>
               <div style="margin-top:20px">
                 <button class="btn btn-secondary" onclick="testPangolinConnection()">
@@ -330,7 +402,8 @@ function livePreview() {
   const frame = document.getElementById('brandPreviewFrame');
   if (!frame) return;
 
-  const color    = document.getElementById('brColorHex')?.value || brandingConfig.primary_color || '#2563eb';
+  const theme    = document.getElementById('brLoginTheme')?.value || brandingConfig.login_theme || 'dark';
+  const color    = theme === 'dark' ? '#10b981' : (document.getElementById('brColorHex')?.value || brandingConfig.primary_color || '#2563eb');
   const orgName  = document.getElementById('brOrgName')?.value || brandingConfig.org_name || 'ZTGuard';
   const title    = document.getElementById('brAuthTitle')?.value || 'Authenticate to access {{resourceName}}';
   const subtitle = document.getElementById('brAuthSubtitle')?.value || 'Choose your preferred authentication method';
@@ -341,6 +414,19 @@ function livePreview() {
 
   const previewTitle = title.replace(/\{\{resourceName\}\}/g, 'Internal Dashboard');
   const previewSubtitle = subtitle.replace(/\{\{resourceName\}\}/g, 'Internal Dashboard');
+
+  const isDark = theme === 'dark';
+  const pageBg = isDark ? '#0a0f1e' : '#f1f5f9';
+  const cardBg = isDark ? '#0d1526' : '#ffffff';
+  const cardBorder = isDark ? 'rgba(59,130,246,0.25)' : '#e2e8f0';
+  const headerBg = isDark ? '#0a0f1e' : '#ffffff';
+  const headerBorder = isDark ? 'rgba(59,130,246,0.2)' : '#e2e8f0';
+  const inputBg = isDark ? 'rgba(255,255,255,0.05)' : '#ffffff';
+  const inputBorder = isDark ? 'rgba(255,255,255,0.12)' : '#e2e8f0';
+  const inputColor = isDark ? '#ffffff' : '#0f172a';
+  const labelColor = isDark ? 'rgba(255,255,255,0.7)' : '#374151';
+  const subtitleColor = isDark ? 'rgba(255,255,255,0.55)' : '#64748b';
+  const footerColor = isDark ? 'rgba(255,255,255,0.25)' : '#94a3b8';
 
   const colorDark = adjustColor(color, -30);
   const colorLight = hexToRgba(color, 0.12);
@@ -354,16 +440,19 @@ function livePreview() {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--brand:${color};--brand-dark:${colorDark};--brand-light:${colorLight}}
-body{font-family:Inter,system-ui,sans-serif;background:#f1f5f9;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+body{font-family:Inter,system-ui,sans-serif;background:${pageBg};min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
 .login-shell{width:100%;max-width:${previewDevice==='mobile'?'360px':'420px'}}
 .org-header{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}
 .org-logo{max-height:40px;max-width:160px;object-fit:contain}
 .org-icon{width:40px;height:40px;background:var(--brand);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff;flex-shrink:0}
 .org-name{font-size:18px;font-weight:700;color:#0f172a}
 .custom-header{margin-bottom:16px;font-size:13px}
-.login-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;box-shadow:0 4px 20px rgba(0,0,0,0.06)}
-.login-title{font-size:17px;font-weight:700;color:#0f172a;margin-bottom:4px}
-.login-sub{font-size:13px;color:#64748b;margin-bottom:24px}
+.login-card{background:${cardBg};border:1px solid ${cardBorder};border-radius:16px;padding:0;box-shadow:0 4px 20px rgba(0,0,0,0.12);overflow:hidden}
+.card-header{background:${headerBg};border-bottom:1px solid ${headerBorder};padding:20px 24px}
+.login-title{font-size:17px;font-weight:700;color:${inputColor};margin-bottom:4px}
+.login-sub{font-size:13px;color:${subtitleColor};margin-bottom:0}
+.card-body{padding:24px}
+.login-sub2{font-size:13px;color:${subtitleColor};margin-bottom:20px}
 .auth-methods{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
 .auth-btn{display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid #e2e8f0;border-radius:10px;cursor:pointer;background:#fff;font-family:inherit;font-size:13px;font-weight:500;color:#374151;transition:all .15s}
 .auth-btn:hover{border-color:var(--brand);background:var(--brand-light);color:var(--brand)}
@@ -373,12 +462,12 @@ body{font-family:Inter,system-ui,sans-serif;background:#f1f5f9;min-height:100vh;
 .auth-btn.primary .icon{background:rgba(255,255,255,0.2)}
 .divider{display:flex;align-items:center;gap:10px;color:#94a3b8;font-size:12px;margin:16px 0}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:#e2e8f0}
-.form-input{width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;color:#0f172a;outline:none;margin-bottom:10px}
+.form-input{width:100%;padding:10px 14px;border:1px solid ${inputBorder};border-radius:8px;font-size:13px;font-family:inherit;color:${inputColor};background:${inputBg};outline:none;margin-bottom:10px}
 .form-input:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-light)}
 .btn-primary{width:100%;padding:11px;background:var(--brand);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer}
 .btn-primary:hover{background:var(--brand-dark)}
 .custom-footer{margin-top:20px;font-size:12px;color:#94a3b8;text-align:center}
-.powered-by{margin-top:28px;text-align:center;font-size:11px;color:#94a3b8}
+.powered-by{margin-top:28px;text-align:center;font-size:11px;color:${footerColor}}
 ${customCss}
 </style>
 </head>
@@ -390,8 +479,14 @@ ${customCss}
   </div>
   ${headerHtml ? `<div class="custom-header">${headerHtml}</div>` : ''}
   <div class="login-card">
-    <div class="login-title">${escHtml(previewTitle)}</div>
-    <div class="login-sub">${escHtml(previewSubtitle)}</div>
+    <div class="card-header">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        ${logoSrc ? `<img src="${logoSrc}" style="height:36px;object-fit:contain">` : `<div style="width:36px;height:36px;background:linear-gradient(135deg,#2563eb,#06b6d4);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff">${escHtml(orgName.charAt(0))}</div>`}
+      </div>
+      <div class="login-title">${escHtml(previewTitle)}</div>
+      <div class="login-sub">${escHtml(previewSubtitle)}</div>
+    </div>
+    <div class="card-body">
     <div class="auth-methods">
       <button class="auth-btn primary">
         <div class="icon">
@@ -410,6 +505,7 @@ ${customCss}
       <button class="btn-primary">Continue →</button>
     </div>
   </div>
+  </div></div>
   ${footerHtml ? `<div class="custom-footer">${footerHtml}</div>` : ''}
   <div class="powered-by">Secured by <strong>${escHtml(orgName)}</strong> · Zero Trust Access</div>
 </div>
@@ -421,6 +517,25 @@ ${customCss}
   const old = frame.src;
   frame.src = url;
   if (old && old.startsWith('blob:')) URL.revokeObjectURL(old);
+}
+
+/* Theme toggle */
+function setLoginTheme(theme) {
+  document.getElementById('brLoginTheme').value = theme;
+  const light = document.getElementById('themeLight');
+  const dark = document.getElementById('themeDark');
+  if (light) {
+    light.style.borderColor = theme==='light' ? '#2563eb' : '#e2e8f0';
+    light.style.background = theme==='light' ? 'rgba(37,99,235,0.08)' : '#fff';
+    light.style.color = theme==='light' ? '#2563eb' : '#64748b';
+  }
+  if (dark) {
+    dark.style.borderColor = theme==='dark' ? '#10b981' : '#e2e8f0';
+    dark.style.background = theme==='dark' ? 'rgba(10,15,30,0.08)' : '#fff';
+    dark.style.color = theme==='dark' ? '#10b981' : '#64748b';
+  }
+  // Update live preview background
+  livePreview();
 }
 
 /* Color utils */
@@ -533,6 +648,8 @@ async function saveBranding() {
     org_name:           document.getElementById('brOrgName')?.value?.trim() || undefined,
     primary_color:      document.getElementById('brColorHex')?.value?.trim() || undefined,
     login_url:          document.getElementById('brLoginUrl')?.value?.trim() || undefined,
+    login_theme:        document.getElementById('brLoginTheme')?.value || undefined,
+    hide_attribution:   document.getElementById('brHideAttrVal')?.value === '1',
     auth_title:         document.getElementById('brAuthTitle')?.value?.trim() || undefined,
     auth_subtitle:      document.getElementById('brAuthSubtitle')?.value?.trim() || undefined,
     custom_css:         document.getElementById('brCustomCss')?.value || undefined,

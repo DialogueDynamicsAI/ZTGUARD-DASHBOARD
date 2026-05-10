@@ -27,15 +27,19 @@ function validateDestination(body) {
   return { errors, logTypes };
 }
 
-// GET all destinations
+// GET all destinations for active org
 router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM destinations ORDER BY created_at DESC').all();
+  const rows = db.prepare(
+    'SELECT * FROM destinations WHERE org_id = ? ORDER BY created_at DESC'
+  ).all(req.activeOrg);
   res.json(rows.map(r => ({ ...r, log_types: JSON.parse(r.log_types) })));
 });
 
-// GET single destination
+// GET single destination (must belong to active org)
 router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM destinations WHERE id = ?').get(req.params.id);
+  const row = db.prepare(
+    'SELECT * FROM destinations WHERE id = ? AND org_id = ?'
+  ).get(req.params.id, req.activeOrg);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json({ ...row, log_types: JSON.parse(row.log_types) });
 });
@@ -46,9 +50,10 @@ router.post('/', (req, res) => {
   if (errors.length) return res.status(400).json({ errors });
 
   const result = db.prepare(`
-    INSERT INTO destinations (name, url, auth_type, auth_value, log_types, active)
-    VALUES (@name, @url, @auth_type, @auth_value, @log_types, @active)
+    INSERT INTO destinations (org_id, name, url, auth_type, auth_value, log_types, active)
+    VALUES (@org_id, @name, @url, @auth_type, @auth_value, @log_types, @active)
   `).run({
+    org_id: req.activeOrg,
     name: req.body.name.trim(),
     url: req.body.url.trim(),
     auth_type: req.body.auth_type || 'none',
@@ -63,7 +68,9 @@ router.post('/', (req, res) => {
 
 // PATCH update destination
 router.patch('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM destinations WHERE id = ?').get(req.params.id);
+  const existing = db.prepare(
+    'SELECT * FROM destinations WHERE id = ? AND org_id = ?'
+  ).get(req.params.id, req.activeOrg);
   if (!existing) return res.status(404).json({ error: 'Not found' });
 
   const merged = { ...existing, ...req.body };
@@ -74,9 +81,10 @@ router.patch('/:id', (req, res) => {
     UPDATE destinations SET
       name = @name, url = @url, auth_type = @auth_type, auth_value = @auth_value,
       log_types = @log_types, active = @active, updated_at = datetime('now')
-    WHERE id = @id
+    WHERE id = @id AND org_id = @org_id
   `).run({
     id: req.params.id,
+    org_id: req.activeOrg,
     name: merged.name.trim(),
     url: merged.url.trim(),
     auth_type: merged.auth_type || 'none',
@@ -91,7 +99,9 @@ router.patch('/:id', (req, res) => {
 
 // DELETE destination
 router.delete('/:id', (req, res) => {
-  const row = db.prepare('SELECT id FROM destinations WHERE id = ?').get(req.params.id);
+  const row = db.prepare(
+    'SELECT id FROM destinations WHERE id = ? AND org_id = ?'
+  ).get(req.params.id, req.activeOrg);
   if (!row) return res.status(404).json({ error: 'Not found' });
   db.prepare('DELETE FROM destinations WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
@@ -99,7 +109,9 @@ router.delete('/:id', (req, res) => {
 
 // POST test destination
 router.post('/:id/test', async (req, res) => {
-  const dest = db.prepare('SELECT * FROM destinations WHERE id = ?').get(req.params.id);
+  const dest = db.prepare(
+    'SELECT * FROM destinations WHERE id = ? AND org_id = ?'
+  ).get(req.params.id, req.activeOrg);
   if (!dest) return res.status(404).json({ error: 'Not found' });
   const result = await sendTestPayload(dest);
   res.json(result);

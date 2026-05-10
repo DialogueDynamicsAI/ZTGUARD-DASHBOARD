@@ -8,6 +8,9 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
+      - /opt/pangolin-branding/logos:/app/brand-logos
+      - /opt/pangolin-branding:/app/pangolin-css
+      - /opt/pangolin/config/db:/app/pangolin-db:ro
     networks:
       - pangolin
     labels:

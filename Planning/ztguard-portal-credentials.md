@@ -67,6 +67,56 @@ Or go to **Organization → Settings** — the Org ID is displayed there.
 
 ---
 
+## Git Repository
+
+| Field | Value |
+|---|---|
+| Repo | `https://github.com/DialogueDynamicsAI/ZTGUARD-DASHBOARD.git` |
+| SSH remote | `git@github-ztguard:DialogueDynamicsAI/ZTGUARD-DASHBOARD.git` |
+| Deploy key (private) | `/root/.ssh/ztguard_dashboard_deploy` (on VPS) |
+| Deploy key (public) | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPaOr7MyrT/McwND2CB1M0Cu3wnWN9roq3nXdMOyfR9 ztguard-dashboard-deploy` |
+| SSH config alias | `github-ztguard` in `/root/.ssh/config` |
+
+### Push code from VPS
+
+```bash
+ssh ztguard-test01
+
+# One-time setup: init git in the portal folder
+cd /opt/ztguard-portal
+git init
+git remote add origin git@github-ztguard:DialogueDynamicsAI/ZTGUARD-DASHBOARD.git
+git add .
+git commit -m "Initial ZTGuard Extended Settings Portal"
+git push -u origin main
+
+# Future pushes after changes
+git add .
+git commit -m "describe changes"
+git push
+```
+
+### Push code from local machine (Windows)
+
+```bash
+cd "C:/Users/JamieLove/OneDrive - Matrix It/DATA/DEV/SRMECHANICAL-Pangolin/ztguard extended settings"
+git init
+git remote add origin https://github.com/DialogueDynamicsAI/ZTGUARD-DASHBOARD.git
+git add .
+git commit -m "Initial ZTGuard Extended Settings Portal"
+git push -u origin main
+```
+
+### Add deploy key to GitHub
+
+1. Go to `https://github.com/DialogueDynamicsAI/ZTGUARD-DASHBOARD/settings/keys`
+2. Click **Add deploy key**
+3. Title: `ztguard-vps-deploy`
+4. Key: `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPaOr7MyrT/McwND2CB1M0Cu3wnWN9roq3nXdMOyfR9 ztguard-dashboard-deploy`
+5. Check **Allow write access** → **Add key**
+
+---
+
 ## Deployment on VPS
 
 ### Step 1 — Copy files to VPS

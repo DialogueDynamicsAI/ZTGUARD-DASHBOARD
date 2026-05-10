@@ -12,12 +12,15 @@ const authRoutes = require('./routes/auth');
 const destinationRoutes = require('./routes/destinations');
 const historyRoutes = require('./routes/history');
 const brandingRoutes = require('./routes/branding');
+const activityRoutes = require('./routes/activity');
+const orgsRoutes = require('./routes/orgs');
 const { startPoller } = require('./poller');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
 const BASE = process.env.BASE_PATH || '/ztguard';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const DEFAULT_ORG = process.env.PANGOLIN_ORG_ID || 'default';
 
 // ── Hash admin password on startup ──────────────────────────────────────────
 (async () => {
@@ -58,15 +61,25 @@ function requireAuth(req, res, next) {
   return res.redirect(BASE + '/login');
 }
 
+// ── Inject active org into every authenticated request ──────────────────────
+function injectActiveOrg(req, res, next) {
+  req.activeOrg = req.session.activeOrg || DEFAULT_ORG;
+  next();
+}
+
 // ── Static files (public/) served under BASE ────────────────────────────────
 app.use(BASE + '/static', express.static(path.join(__dirname, '..', 'public')));
 
 // ── Auth routes (no guard) ───────────────────────────────────────────────────
 app.use(BASE, authRoutes);
 
-// ── Public: logo image (no auth — it's just a PNG/SVG) ───────────────────────
+// ── Public: logo image scoped to active org ──────────────────────────────────
 app.get(BASE + '/api/branding/logo', (req, res) => {
-  const logoData = db.prepare(`SELECT value FROM branding_config WHERE key='logo_data'`).get();
+  // Support ?org_id= param for cross-org preview (no auth needed, it's just an image)
+  const orgId = req.query.org_id || req.session?.activeOrg || DEFAULT_ORG;
+  const logoData = db.prepare(
+    `SELECT value FROM branding_config WHERE org_id = ? AND key = 'logo_data'`
+  ).get(orgId);
   if (!logoData || !logoData.value) return res.status(404).send('No logo set');
   const raw = logoData.value;
   const [header, data] = raw.split(',');
@@ -78,19 +91,23 @@ app.get(BASE + '/api/branding/logo', (req, res) => {
 });
 
 // ── Protected API routes ──────────────────────────────────────────────────────
-app.use(BASE + '/api/destinations', requireAuth, destinationRoutes);
-app.use(BASE + '/api/history', requireAuth, historyRoutes);
-app.use(BASE + '/api/branding', requireAuth, brandingRoutes);
+app.use(BASE + '/api/orgs',         requireAuth, injectActiveOrg, orgsRoutes);
+app.use(BASE + '/api/destinations', requireAuth, injectActiveOrg, destinationRoutes);
+app.use(BASE + '/api/history',      requireAuth, injectActiveOrg, historyRoutes);
+app.use(BASE + '/api/activity',     requireAuth, injectActiveOrg, activityRoutes);
+app.use(BASE + '/api/branding',     requireAuth, injectActiveOrg, brandingRoutes);
 
 // ── API: status ───────────────────────────────────────────────────────────────
-app.get(BASE + '/api/status', requireAuth, (req, res) => {
-  const cursors = db.prepare('SELECT * FROM cursors').all();
-  const destCount = db.prepare('SELECT COUNT(*) as n FROM destinations WHERE active = 1').get();
+app.get(BASE + '/api/status', requireAuth, injectActiveOrg, (req, res) => {
+  const orgId = req.activeOrg;
+  const cursors = db.prepare('SELECT * FROM cursors WHERE org_id = ?').all(orgId);
+  const destCount = db.prepare('SELECT COUNT(*) as n FROM destinations WHERE active = 1 AND org_id = ?').get(orgId);
   const recentDelivery = db.prepare(
-    'SELECT created_at, status_code FROM delivery_log ORDER BY id DESC LIMIT 1'
-  ).get();
+    'SELECT created_at, status_code FROM delivery_log WHERE org_id = ? ORDER BY id DESC LIMIT 1'
+  ).get(orgId);
   res.json({
     ok: true,
+    activeOrg: orgId,
     activeDestinations: destCount.n,
     cursors,
     lastDelivery: recentDelivery || null,
@@ -115,6 +132,6 @@ app.get(BASE + '/*', requireAuth, (req, res) => {
 // ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`[server] ZTGuard Portal running on port ${PORT}`);
-  console.log(`[server] Base path: ${BASE}`);
+  console.log(`[server] Base path: ${BASE}, Default org: ${DEFAULT_ORG}`);
   startPoller();
 });

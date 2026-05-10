@@ -3,9 +3,9 @@ const db = require('./db');
 
 const insertLog = db.prepare(`
   INSERT INTO delivery_log
-    (destination_id, destination_name, log_type, event_ts, status_code, latency_ms, error, retry_count)
+    (org_id, destination_id, destination_name, log_type, event_ts, status_code, latency_ms, error, retry_count)
   VALUES
-    (@destination_id, @destination_name, @log_type, @event_ts, @status_code, @latency_ms, @error, @retry_count)
+    (@org_id, @destination_id, @destination_name, @log_type, @event_ts, @status_code, @latency_ms, @error, @retry_count)
 `);
 
 async function forwardToDestination(destination, logType, events) {
@@ -51,6 +51,7 @@ async function forwardToDestination(destination, logType, events) {
   const latency = Date.now() - start;
 
   insertLog.run({
+    org_id: destination.org_id || 'default',
     destination_id: destination.id,
     destination_name: destination.name,
     log_type: logType,
@@ -68,10 +69,10 @@ async function forwardToDestination(destination, logType, events) {
   }
 }
 
-async function forwardEvents(logType, events) {
+async function forwardEvents(orgId, logType, events) {
   const destinations = db.prepare(
-    `SELECT * FROM destinations WHERE active = 1`
-  ).all();
+    `SELECT * FROM destinations WHERE active = 1 AND org_id = ?`
+  ).all(orgId);
 
   for (const dest of destinations) {
     let enabledTypes;

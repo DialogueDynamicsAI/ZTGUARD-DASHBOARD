@@ -1,0 +1,151 @@
+/* ================================================================
+   ZTGuard Complete Login Page Theme
+   Matches ztguard.net exactly: dark navy, blue glow, green button
+   Font: Inter | Background: #0a0f1e | Button: #10b981
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* -- Green primary button -- */
+:root {
+  --primary: oklch(72.3% .219 149.579);
+  --primary-foreground: oklch(12% .04 155);
+  --ring: oklch(72.3% .219 149.579);
+}
+
+/* -- Full-page dark background using pseudo-element -- */
+html::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(135deg, #0a0f1e 0%, #0d1526 50%, #0a1a40 100%);
+}
+html::after {
+  content: '';
+  position: fixed;
+  top: -200px; right: -200px;
+  width: 600px; height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+html, body {
+  font-family: 'Inter', system-ui, sans-serif !important;
+  background: #0a0f1e !important;
+}
+#__next, main, .min-h-screen { background: transparent !important; }
+
+/* -- Login card: dark with blue border glow -- */
+.rounded-xl.border,
+.rounded-lg.border {
+  background: #0d1526 !important;
+  border-color: rgba(59,130,246,0.25) !important;
+  box-shadow: 0 0 0 1px rgba(59,130,246,0.1),
+              0 20px 60px rgba(0,0,0,0.5),
+              0 0 40px rgba(59,130,246,0.06) !important;
+}
+
+/* -- Card header: dark nav strip with logo -- */
+div:has(> img[src*='word_mark']) {
+  background: #0a0f1e !important;
+  padding: 22px 28px 20px !important;
+  border-radius: 0.75rem 0.75rem 0 0 !important;
+  border-bottom: 1px solid rgba(59,130,246,0.2) !important;
+  margin: -1px -1px 0 -1px !important;
+}
+
+/* -- Subtitle text -- */
+div:has(> img[src*='word_mark']) ~ p {
+  color: rgba(255,255,255,0.55) !important;
+}
+
+/* -- Form section -- */
+.rounded-xl.border > div:last-child,
+.rounded-lg.border > div:last-child {
+  background: #0d1526 !important;
+}
+
+/* -- Labels -- */
+label {
+  color: rgba(255,255,255,0.7) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+/* -- Inputs: dark with blue focus ring -- */
+input[type='email'],
+input[type='password'],
+input[type='text'],
+input {
+  background: rgba(255,255,255,0.05) !important;
+  border-color: rgba(255,255,255,0.12) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-family: inherit !important;
+  transition: border-color .15s, box-shadow .15s !important;
+}
+input::placeholder { color: rgba(255,255,255,0.25) !important; }
+input:focus {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.18) !important;
+  outline: none !important;
+}
+
+/* -- Primary button: ztguard.net green -- */
+button.bg-primary,
+[class*='bg-primary'] {
+  background: #10b981 !important;
+  color: #fff !important;
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  letter-spacing: 0.01em !important;
+  transition: background .15s, transform .1s !important;
+}
+button.bg-primary:hover,
+[class*='bg-primary']:hover {
+  background: #059669 !important;
+  transform: translateY(-1px) !important;
+}
+
+/* -- "Use Security Key" ghost button -- */
+button:not([class*='bg-primary']) {
+  background: transparent !important;
+  border-color: rgba(255,255,255,0.18) !important;
+  color: rgba(255,255,255,0.7) !important;
+  border-radius: 8px !important;
+}
+button:not([class*='bg-primary']):hover {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.35) !important;
+}
+
+/* -- Muted text / forgot password -- */
+.text-muted-foreground {
+  color: rgba(255,255,255,0.38) !important;
+}
+.text-muted-foreground:hover { color: rgba(255,255,255,0.65) !important; }
+
+/* -- Separator -- */
+[role='separator'] {
+  background-color: rgba(255,255,255,0.1) !important;
+}
+
+/* -- Footer -- */
+footer, footer * { color: rgba(255,255,255,0.22) !important; }
+footer a:hover { color: rgba(255,255,255,0.5) !important; }
+
+/* -- Sign up link -- */
+.text-center a, p > a { color: #10b981 !important; }
+.text-center a:hover, p > a:hover { color: #34d399 !important; }
+
+/* -- Password toggle eye button -- */
+button[type='button']:not([class*='bg-primary']) {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(255,255,255,0.4) !important;
+}
