@@ -255,11 +255,11 @@ button.primary { border-radius: 8px; }"
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                   Open Resource Auth Page
                 </a>
-                <a href="https://pangolin.test01.ztguard.net/auth/login" target="_blank" class="btn btn-secondary btn-sm">
+                <a href="https://ztna.ztguard.net/auth/login" target="_blank" class="btn btn-secondary btn-sm">
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                   Open Pangolin Login
                 </a>
-                <a href="https://pangolin.test01.ztguard.net" target="_blank" class="btn btn-secondary btn-sm">
+                <a href="https://ztna.ztguard.net" target="_blank" class="btn btn-secondary btn-sm">
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                   Pangolin Dashboard
                 </a>
