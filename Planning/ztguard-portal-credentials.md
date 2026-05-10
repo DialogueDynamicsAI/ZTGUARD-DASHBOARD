@@ -8,8 +8,8 @@
 
 | Environment | URL |
 |---|---|
-| Production | `https://pangolin.test01.ztguard.net/ztguard` |
-| Login page | `https://pangolin.test01.ztguard.net/ztguard/login` |
+| Production | `https://ztna.ztguard.net/ztguard` |
+| Login page | `https://ztna.ztguard.net/ztguard/login` |
 
 ---
 
@@ -33,7 +33,7 @@ Copy `ztguard-portal/.env.example` to `ztguard-portal/.env` and fill in:
 ```env
 ADMIN_PASSWORD=ztguard-admin-2026          # ← CHANGE THIS
 SESSION_SECRET=658c3a5b05437da8e5b18424dd674244e363be82dc1a601f56297b5d5ed8ea0b78b061012e5802e23711958b95cef4e2
-PANGOLIN_API_URL=https://pangolin.test01.ztguard.net/v1
+PANGOLIN_API_URL=https://ztna.ztguard.net/v1
 PANGOLIN_API_KEY=<create in Pangolin dashboard>
 PANGOLIN_ORG_ID=<your org ID from Pangolin>
 PORT=3100
@@ -51,7 +51,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ## Pangolin API Key Setup
 
-1. Log into the Pangolin dashboard at `https://pangolin.test01.ztguard.net`
+1. Log into the Pangolin dashboard at `https://ztna.ztguard.net`
 2. Go to **Organization → API Keys**
 3. Click **Create API Key**
 4. Name it `ztguard-portal`
@@ -155,7 +155,7 @@ docker compose ps              # ztguard-portal should be "Up"
 docker compose logs --tail=20  # check for startup errors
 ```
 
-Visit `https://pangolin.test01.ztguard.net/ztguard` — you should see the login page.
+Visit `https://ztna.ztguard.net/ztguard` — you should see the login page.
 
 ---
 

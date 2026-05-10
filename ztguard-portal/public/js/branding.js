@@ -28,6 +28,7 @@ function renderBrandingPage() {
   const customFooterHtml = brandingConfig.custom_footer_html || '';
   const loginTheme = brandingConfig.login_theme || 'dark';
   const hideAttr = brandingConfig.hide_attribution !== '0';
+  const hideSidebar = brandingConfig.hide_sidebar_branding !== '0';
 
   page.innerHTML = `
     <div class="branding-layout">
@@ -141,7 +142,19 @@ function renderBrandingPage() {
                   <span class="toggle-label" style="font-size:13px;font-weight:500">Hide "Powered by Pangolin" and supporter notices</span>
                 </label>
                 <input type="hidden" id="brHideAttrVal" value="${hideAttr ? '1' : '0'}">
-                <div class="form-hint" style="margin-top:6px">Removes Pangolin branding from all resource auth pages.</div>
+                <div class="form-hint" style="margin-top:6px">Removes "Powered by Pangolin" and supporter notices from resource auth pages.</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Dashboard Sidebar Branding</label>
+                <label class="toggle" style="cursor:pointer">
+                  <input type="checkbox" id="brHideSidebar" ${hideSidebar ? 'checked' : ''}
+                    onchange="document.getElementById('brHideSidebarVal').value=this.checked?'1':'0'">
+                  <div class="toggle-track"></div>
+                  <span class="toggle-label" style="font-size:13px;font-weight:500">Hide "Buy Supporter Key" and "Community Edition" from sidebar</span>
+                </label>
+                <input type="hidden" id="brHideSidebarVal" value="${hideSidebar ? '1' : '0'}">
+                <div class="form-hint" style="margin-top:6px">Removes supporter key button and edition label from the Pangolin dashboard sidebar.</div>
               </div>
 
               <div class="form-group">
@@ -649,7 +662,8 @@ async function saveBranding() {
     primary_color:      document.getElementById('brColorHex')?.value?.trim() || undefined,
     login_url:          document.getElementById('brLoginUrl')?.value?.trim() || undefined,
     login_theme:        document.getElementById('brLoginTheme')?.value || undefined,
-    hide_attribution:   document.getElementById('brHideAttrVal')?.value === '1',
+    hide_attribution:        document.getElementById('brHideAttrVal')?.value === '1',
+    hide_sidebar_branding:   document.getElementById('brHideSidebarVal')?.value === '1',
     auth_title:         document.getElementById('brAuthTitle')?.value?.trim() || undefined,
     auth_subtitle:      document.getElementById('brAuthSubtitle')?.value?.trim() || undefined,
     custom_css:         document.getElementById('brCustomCss')?.value || undefined,

@@ -15,6 +15,7 @@ const brandingRoutes = require('./routes/branding');
 const activityRoutes = require('./routes/activity');
 const orgsRoutes = require('./routes/orgs');
 const alertingRoutes = require('./routes/alerting');
+const { router: connectionRoutes, getConfig, applyConfig } = require('./routes/connection');
 const { startPoller } = require('./poller');
 const { startAlerter } = require('./alerter');
 
@@ -93,6 +94,7 @@ app.get(BASE + '/api/branding/logo', (req, res) => {
 });
 
 // ── Protected API routes ──────────────────────────────────────────────────────
+app.use(BASE + '/api/connection',   requireAuth, connectionRoutes);
 app.use(BASE + '/api/orgs',         requireAuth, injectActiveOrg, orgsRoutes);
 app.use(BASE + '/api/alerting',     requireAuth, injectActiveOrg, alertingRoutes);
 app.use(BASE + '/api/destinations', requireAuth, injectActiveOrg, destinationRoutes);
@@ -136,6 +138,10 @@ app.get(BASE + '/*', requireAuth, (req, res) => {
 app.listen(PORT, () => {
   console.log(`[server] ZTGuard Portal running on port ${PORT}`);
   console.log(`[server] Base path: ${BASE}, Default org: ${DEFAULT_ORG}`);
+  // Apply connection settings from DB (overrides env vars if set)
+  const savedConfig = getConfig();
+  if (savedConfig.pangolin_url) applyConfig(savedConfig);
+  console.log(`[server] Pangolin URL: ${process.env.PANGOLIN_API_URL || '(not set)'}`);
   startPoller();
   startAlerter();
 });

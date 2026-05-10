@@ -11,6 +11,27 @@ const PANGOLIN_JS_CHUNK = '/app/pangolin-css/auth-resource-page-patched-new.js';
 const PANGOLIN_JS_ORIG  = '/app/pangolin-css/auth-resource-page-orig.js';
 const PANGOLIN_JS_CLEAN = '/app/pangolin-css/auth-resource-page-patched.js';
 
+// Sidebar branding JS (Buy Supporter Key panel)
+const SIDEBAR_JS_CHUNK   = '/app/pangolin-css/sidebar-chunk-active.js';
+const SIDEBAR_JS_ORIG    = '/app/pangolin-css/sidebar-chunk.js';
+const SIDEBAR_JS_PATCHED = '/app/pangolin-css/sidebar-chunk-patched.js';
+
+function updateSidebarJs(hide) {
+  try {
+    const src = hide ? SIDEBAR_JS_PATCHED : SIDEBAR_JS_ORIG;
+    if (!fs.existsSync(src)) {
+      console.warn('[branding] Sidebar JS source not found:', src);
+      return false;
+    }
+    fs.copyFileSync(src, SIDEBAR_JS_CHUNK);
+    console.log(`[branding] Sidebar JS updated — hide: ${hide}`);
+    return true;
+  } catch (err) {
+    console.error('[branding] Sidebar JS update failed:', err.message);
+    return false;
+  }
+}
+
 function updateAttributionJs(hide) {
   try {
     const src = hide ? PANGOLIN_JS_CLEAN : PANGOLIN_JS_ORIG;
@@ -66,6 +87,16 @@ button.bg-primary{background:#2563eb !important;color:#fff !important;border-rad
 button.bg-primary:hover{background:#1d4ed8 !important;}
 `;
 
+const HIDE_SIDEBAR_CSS = `
+/* === Hide Pangolin sidebar branding ===
+   Community Edition link (a[href*="github.com/fosrl/pangolin"])
+   Buy Supporter Key button handled via JS chunk patch (sidebar-chunk-active.js)
+*/
+a[href*="github.com/fosrl/pangolin"] { display:none !important; }
+/* The text/div wrapping the Community Edition link */
+div:has(> a[href*="github.com/fosrl/pangolin"]) { display:none !important; }
+`;
+
 const HIDE_ATTRIBUTION_CSS = `
 /* === Hide Pangolin Attribution (safe selectors only) ===
    Source-verified from Pangolin 1.18.3:
@@ -97,10 +128,15 @@ function writePangolinCss(theme) {
     }
 
     const themeCSS = theme === 'light' ? LIGHT_THEME_CSS : DARK_THEME_CSS;
-    // Check if attribution should be hidden
     const hideRow = db.prepare("SELECT value FROM branding_config WHERE key='hide_attribution'").get();
     const hideAttr = hideRow && hideRow.value === '1';
-    fs.writeFileSync(PANGOLIN_CSS_PATH, base + themeCSS + (hideAttr ? HIDE_ATTRIBUTION_CSS : ''), 'utf8');
+    const hideSidebarRow = db.prepare("SELECT value FROM branding_config WHERE key='hide_sidebar_branding'").get();
+    const hideSidebar = hideSidebarRow && hideSidebarRow.value === '1';
+    fs.writeFileSync(
+      PANGOLIN_CSS_PATH,
+      base + themeCSS + (hideAttr ? HIDE_ATTRIBUTION_CSS : '') + (hideSidebar ? HIDE_SIDEBAR_CSS : ''),
+      'utf8'
+    );
     console.log(`[branding] Pangolin CSS updated to ${theme} theme`);
     return true;
   } catch (err) {
@@ -240,7 +276,7 @@ router.post('/', (req, res) => {
   const orgId = req.activeOrg;
   const { org_name, primary_color, login_url, logo_data,
           auth_title, auth_subtitle, custom_css, custom_header_html, custom_footer_html,
-          login_theme, hide_attribution } = req.body;
+          login_theme, hide_attribution, hide_sidebar_branding } = req.body;
 
   if (org_name !== undefined) set(orgId, 'org_name', org_name);
   if (primary_color !== undefined) {
@@ -264,6 +300,12 @@ router.post('/', (req, res) => {
     const currentTheme = db.prepare("SELECT value FROM branding_config WHERE org_id = ? AND key = 'login_theme'").get(orgId);
     writePangolinCss((currentTheme && currentTheme.value) || 'dark');
     updateAttributionJs(hide_attribution);
+  }
+  if (hide_sidebar_branding !== undefined) {
+    set(orgId, 'hide_sidebar_branding', hide_sidebar_branding ? '1' : '0');
+    updateSidebarJs(hide_sidebar_branding);
+    const currentTheme = db.prepare("SELECT value FROM branding_config WHERE org_id = ? AND key = 'login_theme'").get(orgId);
+    writePangolinCss((currentTheme && currentTheme.value) || 'light');
   }
   if (logo_data !== undefined) {
     if (logo_data && !logo_data.startsWith('data:image/')) {

@@ -201,12 +201,27 @@ const BRANDING_DEFAULTS = [
   ['custom_footer_html', ''],
   ['login_theme', 'dark'],
   ['hide_attribution', '1'],
+  ['hide_sidebar_branding', '1'],
 ];
 const insertBranding = db.prepare(
   `INSERT OR IGNORE INTO branding_config (org_id, key, value) VALUES (?, ?, ?)`
 );
 for (const [key, value] of BRANDING_DEFAULTS) {
   insertBranding.run(DEFAULT_ORG, key, value);
+}
+
+// Seed connection config defaults (blank — configured via UI)
+const CONNECTION_DEFAULTS = [
+  ['pangolin_url',     ''],
+  ['pangolin_api_key', ''],
+  ['pangolin_org_id',  DEFAULT_ORG],
+  ['poll_interval',    '30'],
+];
+const insertConfig = db.prepare(
+  `INSERT OR IGNORE INTO app_config (key, value) VALUES (?, ?)`
+);
+for (const [key, value] of CONNECTION_DEFAULTS) {
+  insertConfig.run(key, value);
 }
 
 module.exports = db;

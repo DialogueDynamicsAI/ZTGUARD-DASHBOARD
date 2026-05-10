@@ -96,18 +96,194 @@ async function initDashboard() {
   }
 }
 
-/* ─── Settings ──────────────────────────────────────────────────────────── */
+/* ─── Connection Settings ───────────────────────────────────────────────── */
 async function initSettings() {
+  const page = document.getElementById('page-settings');
+  document.getElementById('topbarActions').innerHTML = '';
+  page.innerHTML = `<div style="text-align:center;padding:40px"><div class="spinner"></div></div>`;
+
+  let cfg = {};
+  try { cfg = await api('/api/connection'); } catch (_) {}
+
+  page.innerHTML = `
+    <div class="card" style="max-width:640px">
+      <div class="card-header"><h3>Pangolin API Connection</h3></div>
+      <div class="card-body">
+
+        <div id="connStatus" style="margin-bottom:16px"></div>
+
+        <div class="form-group">
+          <label class="form-label">Pangolin Server URL <span class="req">*</span></label>
+          <input class="form-input" id="cfgUrl" value="${escHtml(cfg.pangolin_url||'')}" placeholder="https://your-pangolin.example.com">
+          <div class="form-hint">The base URL of your Pangolin instance (no trailing slash).</div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;border-color:#bfdbfe;background:#eff6ff">
+          <div class="card-header" style="background:transparent;border-color:#bfdbfe">
+            <h3 style="color:#1e40af;font-size:13px">Auto-Discover (Recommended)</h3>
+            <span style="font-size:11px;color:#64748b">Logs in to Pangolin and creates an API key automatically</span>
+          </div>
+          <div class="card-body" style="padding:14px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Admin Email</label>
+                <input class="form-input" id="cfgEmail" type="email" placeholder="admin@example.com">
+              </div>
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Admin Password</label>
+                <input class="form-input" id="cfgPassword" type="password" placeholder="••••••••">
+              </div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="discoverConnection()" id="discoverBtn">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              Auto-Discover Orgs & Create API Key
+            </button>
+            <div id="discoverResult" style="margin-top:10px"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Organization ID <span class="req">*</span></label>
+          <div style="display:flex;gap:8px">
+            <input class="form-input" id="cfgOrgId" value="${escHtml(cfg.pangolin_org_id||'')}" placeholder="your-org-id" style="flex:1">
+            <select class="form-select" id="cfgOrgSelect" onchange="document.getElementById('cfgOrgId').value=this.value" style="max-width:200px;display:none">
+              <option value="">Select org…</option>
+            </select>
+          </div>
+          <div class="form-hint">The org ID from your Pangolin dashboard URL (/org/YOUR-ORG-ID/).</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">API Key <span class="req">*</span></label>
+          <div style="position:relative">
+            <input class="form-input" id="cfgApiKey" type="password" placeholder="${cfg.api_key_set ? cfg.api_key_preview : 'Paste API key or use Auto-Discover above'}" style="padding-right:80px">
+            <button type="button" onclick="toggleApiKeyVis()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:11px;color:#64748b;font-family:inherit">Show</button>
+          </div>
+          <div class="form-hint">${cfg.api_key_set ? `Current key: <code>${cfg.api_key_preview}</code> — leave blank to keep existing.` : 'Create in Pangolin → Organization → API Keys, or use Auto-Discover.'}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Poll Interval (seconds)</label>
+          <input class="form-input" id="cfgPoll" type="number" value="${cfg.poll_interval||30}" min="10" max="3600" style="max-width:140px">
+          <div class="form-hint">How often to poll Pangolin logs for event streaming. Default: 30s.</div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn btn-primary" onclick="saveConnectionSettings()">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            Save Settings
+          </button>
+          <button class="btn btn-secondary" onclick="testConnectionSettings()">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Test Connection
+          </button>
+        </div>
+
+      </div>
+    </div>
+  `;
+}
+
+function toggleApiKeyVis() {
+  const inp = document.getElementById('cfgApiKey');
+  const btn = inp?.nextElementSibling;
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  if (btn) btn.textContent = inp.type === 'password' ? 'Show' : 'Hide';
+}
+
+async function discoverConnection() {
+  const server_url = document.getElementById('cfgUrl')?.value?.trim();
+  const email = document.getElementById('cfgEmail')?.value?.trim();
+  const password = document.getElementById('cfgPassword')?.value;
+  const resultEl = document.getElementById('discoverResult');
+  const btn = document.getElementById('discoverBtn');
+
+  if (!server_url) { showToast('Enter Server URL first', 'error'); return; }
+  if (!email || !password) { showToast('Enter admin email and password', 'error'); return; }
+
+  btn.disabled = true; btn.textContent = 'Discovering…';
+  resultEl.innerHTML = '';
+
   try {
-    const status = await api('/api/status');
-    document.getElementById('cfg-api-url').textContent =
-      (window.__ENV && window.__ENV.PANGOLIN_API_URL) || 'Set in .env file';
-    document.getElementById('cfg-org-id').textContent =
-      (window.__ENV && window.__ENV.PANGOLIN_ORG_ID) || 'Set in .env file';
-    document.getElementById('cfg-api-key').textContent = '••••••••••••••••';
-    document.getElementById('cfg-poll').textContent =
-      (status.pollInterval || 30) + ' seconds';
-  } catch (_) {}
+    const r = await api('/api/connection/discover', {
+      method: 'POST',
+      body: { server_url, email, password },
+    });
+
+    // Populate org dropdown
+    const orgs = r.orgs || [];
+    const select = document.getElementById('cfgOrgSelect');
+    if (orgs.length > 0 && select) {
+      select.innerHTML = '<option value="">Select org…</option>' +
+        orgs.map(o => `<option value="${escHtml(o.orgId)}">${escHtml(o.name)} (${escHtml(o.orgId)})</option>`).join('');
+      select.style.display = 'block';
+      if (orgs.length === 1) {
+        document.getElementById('cfgOrgId').value = orgs[0].orgId;
+        select.value = orgs[0].orgId;
+      }
+    }
+
+    // Auto-fill API key
+    if (r.api_key) {
+      const keyInput = document.getElementById('cfgApiKey');
+      if (keyInput) { keyInput.value = r.api_key; keyInput.type = 'text'; }
+    }
+
+    resultEl.innerHTML = `<div class="alert alert-success"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>${r.message}</div>`;
+  } catch (err) {
+    resultEl.innerHTML = `<div class="alert alert-error"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>${err.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> Auto-Discover Orgs & Create API Key';
+  }
+}
+
+async function saveConnectionSettings() {
+  const payload = {
+    pangolin_url:    document.getElementById('cfgUrl')?.value?.trim(),
+    pangolin_org_id: document.getElementById('cfgOrgId')?.value?.trim(),
+    poll_interval:   document.getElementById('cfgPoll')?.value,
+  };
+  const apiKeyVal = document.getElementById('cfgApiKey')?.value?.trim();
+  if (apiKeyVal) payload.pangolin_api_key = apiKeyVal;
+
+  if (!payload.pangolin_url) { showToast('Server URL is required', 'error'); return; }
+  if (!payload.pangolin_org_id) { showToast('Org ID is required', 'error'); return; }
+
+  try {
+    await api('/api/connection', { method: 'POST', body: payload });
+    showToast('Connection settings saved', 'success');
+    document.getElementById('cfgPassword').value = '';
+    await initSettings();
+  } catch (err) { showToast('Save failed: ' + err.message, 'error'); }
+}
+
+async function testConnectionSettings() {
+  const statusEl = document.getElementById('connStatus');
+  if (statusEl) statusEl.innerHTML = '<div class="alert alert-info">Testing connection…</div>';
+  try {
+    // Save current form values first
+    const payload = {
+      pangolin_url:    document.getElementById('cfgUrl')?.value?.trim(),
+      pangolin_org_id: document.getElementById('cfgOrgId')?.value?.trim(),
+    };
+    const apiKeyVal = document.getElementById('cfgApiKey')?.value?.trim();
+    if (apiKeyVal) payload.pangolin_api_key = apiKeyVal;
+    if (payload.pangolin_url) await api('/api/connection', { method: 'POST', body: payload });
+
+    const r = await api('/api/connection/test', { method: 'POST' });
+    if (r.ok) {
+      if (statusEl) statusEl.innerHTML = `<div class="alert alert-success"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>${r.message}</div>`;
+    } else {
+      if (statusEl) statusEl.innerHTML = `<div class="alert alert-error"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>${r.error}</div>`;
+    }
+  } catch (err) {
+    if (statusEl) statusEl.innerHTML = `<div class="alert alert-error">Test failed: ${err.message}</div>`;
+  }
+}
+
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 /* ─── Auth ──────────────────────────────────────────────────────────────── */
