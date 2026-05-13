@@ -15,6 +15,58 @@
 
 ---
 
+## One-Command Installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DialogueDynamicsAI/ZTGUARD-DASHBOARD/main/install.sh | bash
+```
+
+### What the installer does (in order)
+1. Detects Pangolin at `/opt/pangolin` (or prompts for custom path)
+2. Reads `config/config.yml` to get domain and Docker network name
+3. Prompts for admin password (or generates a secure random one)
+4. Creates `/opt/ztguard-portal/` with docker-compose.yml + .env
+5. Runs `install/patch-branding.sh` — patches Pangolin JS/CSS bundles
+6. Adds Traefik route to `config/traefik/dynamic_config.yml`
+7. Builds and starts the portal container
+8. Restarts Pangolin to apply patches
+9. Prints the portal URL + password
+
+### Files created
+```
+/opt/ztguard-portal/     ← portal install directory
+  docker-compose.yml     ← portal container config (auto-generated)
+  .env                   ← credentials + settings (chmod 600)
+  .install-info          ← install metadata for uninstaller
+  data/                  ← SQLite databases (persistent)
+/opt/pangolin-branding/  ← JS/CSS patch files (shared with Pangolin)
+  logos/                 ← wordmark PNG files
+  *.css                  ← CSS override file
+  *-chunk.js             ← patched JS bundles
+  .css-hash              ← CSS filename hash (used by portal .env)
+```
+
+### Installer files in this repo
+```
+install.sh                          ← one-command installer
+uninstall.sh                        ← clean removal
+install/
+  docker-compose.template.yml       ← portal compose template ({{VARIABLES}})
+  traefik-route.template.yml        ← Traefik route template ({{DOMAIN}})
+  patch-branding.sh                 ← applies all JS/CSS patches to Pangolin
+  restore-branding.sh               ← reverses all patches
+```
+
+### Uninstall
+```bash
+bash /opt/ztguard-portal/uninstall.sh
+# or
+bash uninstall.sh
+```
+Stops container, removes all files, removes Traefik route, restores Pangolin.
+
+---
+
 ## VPS Details
 
 | Field | Value |

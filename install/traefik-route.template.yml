@@ -1,0 +1,18 @@
+# ZTGuard Dashboard — Traefik route
+# Added by install.sh — remove with uninstall.sh
+http:
+  routers:
+    ztguard-portal:
+      rule: "Host(`{{DOMAIN}}`) && PathPrefix(`/ztguard`)"
+      entryPoints:
+        - websecure
+      priority: 200
+      service: ztguard-portal-svc
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    ztguard-portal-svc:
+      loadBalancer:
+        servers:
+          - url: "http://ztguard-portal:3100"
