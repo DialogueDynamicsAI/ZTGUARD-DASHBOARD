@@ -109,11 +109,17 @@ echo ""
 echo "  Choose an admin password for the ZTGuard dashboard."
 echo "  (Press ENTER to generate a secure random password)"
 echo ""
-read -rsp "  Admin password: " ADMIN_PASSWORD
-echo ""
+# Read from /dev/tty so it works whether piped or run directly
+if [[ -t 0 ]]; then
+    read -rsp "  Admin password: " ADMIN_PASSWORD < /dev/tty
+    echo ""
+else
+    read -rsp "  Admin password: " ADMIN_PASSWORD < /dev/tty 2>/dev/null || ADMIN_PASSWORD=""
+    echo ""
+fi
 if [[ -z "$ADMIN_PASSWORD" ]]; then
     ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '+/=' | head -c 16)
-    warn "Generated password: ${BOLD}$ADMIN_PASSWORD${NC}"
+    warn "Generated password: ${BOLD}${ADMIN_PASSWORD}${NC}"
     warn "Save this — it will not be shown again."
 fi
 
@@ -203,20 +209,32 @@ success "Configuration written"
 # ── Apply branding patches ─────────────────────────────────────────────────────
 step "Applying branding patches to Pangolin..."
 
-# Find the patch script
+# Find or download the patch script
 PATCH_SCRIPT=""
 for p in "$SCRIPT_DIR/install/patch-branding.sh" \
-          "$SCRIPT_DIR/patch-branding.sh"; do
+          "$SCRIPT_DIR/patch-branding.sh" \
+          "$INSTALL_DIR/install/patch-branding.sh"; do
     [[ -f "$p" ]] && PATCH_SCRIPT="$p" && break
 done
+
+# If not found locally, try to download it
+if [[ -z "$PATCH_SCRIPT" ]]; then
+    PATCH_SCRIPT="/tmp/ztguard-patch-branding-$$.sh"
+    info "Downloading patch-branding.sh from GitHub..."
+    if curl -fsSL "${REPO_URL}/raw/main/install/patch-branding.sh" -o "$PATCH_SCRIPT" 2>/dev/null; then
+        chmod +x "$PATCH_SCRIPT"
+    else
+        rm -f "$PATCH_SCRIPT"
+        PATCH_SCRIPT=""
+    fi
+fi
 
 if [[ -n "$PATCH_SCRIPT" ]]; then
     chmod +x "$PATCH_SCRIPT"
     bash "$PATCH_SCRIPT" "$PANGOLIN_DIR" "$BRANDING_DIR" "pangolin" || \
         warn "Branding patch had warnings — continuing"
 else
-    warn "patch-branding.sh not found — skipping branding patches"
-    warn "You can apply them later: bash install/patch-branding.sh"
+    warn "Branding patches skipped — apply later: curl -fsSL ${REPO_URL}/raw/main/install/patch-branding.sh | bash -s $PANGOLIN_DIR $BRANDING_DIR"
 fi
 
 # Update PANGOLIN_CSS_PATH with actual hash
@@ -241,39 +259,46 @@ else
     done
 
     if [[ -f "$TRAEFIK_DYNAMIC_CONFIG" ]]; then
-        # Append to existing dynamic config using Python (safe YAML manipulation)
-        python3 - << PYEOF
-domain = '$PANGOLIN_DOMAIN'
-with open('$TRAEFIK_DYNAMIC_CONFIG') as f:
+        # Write Python script to temp file (avoids bash heredoc mangling backticks)
+        TRAEFIK_PY="/tmp/ztguard_traefik_$$.py"
+        cat > "$TRAEFIK_PY" << PYEOF
+import sys
+domain = sys.argv[1]
+config_file = sys.argv[2]
+bt = chr(96)
+
+with open(config_file) as f:
     content = f.read()
 
-router_entry = f'''
+router_entry = """
     ztguard-portal:
-      rule: "Host(\\`{domain}\\`) && PathPrefix(\\`/ztguard\\`)"
+      rule: "Host({bt}{domain}{bt}) && PathPrefix({bt}/ztguard{bt})"
       entryPoints:
         - websecure
       priority: 200
       service: ztguard-portal-svc
       tls:
         certResolver: letsencrypt
-'''
-service_entry = '''
+""".format(bt=bt, domain=domain)
+
+service_entry = """
     ztguard-portal-svc:
       loadBalancer:
         servers:
           - url: "http://ztguard-portal:3100"
-'''
+"""
 
-# Insert into existing http.routers and http.services sections
 if 'routers:' in content and 'ztguard-portal' not in content:
     content = content.replace('  routers:', '  routers:' + router_entry, 1)
 if 'services:' in content and 'ztguard-portal-svc' not in content:
     content = content.replace('  services:', '  services:' + service_entry, 1)
 
-with open('$TRAEFIK_DYNAMIC_CONFIG', 'w') as f:
+with open(config_file, 'w') as f:
     f.write(content)
 print('  ZTGuard route added to dynamic_config.yml')
 PYEOF
+        python3 "$TRAEFIK_PY" "$PANGOLIN_DOMAIN" "$TRAEFIK_DYNAMIC_CONFIG"
+        rm -f "$TRAEFIK_PY"
     else
         # Create standalone route file
         cat > "$TRAEFIK_DYNAMIC_DIR/ztguard-portal.yml" << EOF
@@ -342,8 +367,8 @@ echo -e "${GREEN}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════════════╗"
 echo "  ║   ZTGuard Dashboard installed successfully!                 ║"
 echo "  ╠══════════════════════════════════════════════════════════════╣"
-echo -e "  ║   ${NC}${BOLD}Portal URL:${NC}  https://${PANGOLIN_DOMAIN}/ztguard${GREEN}${BOLD}                  "
-echo -e "  ║   ${NC}${BOLD}Password: ${NC}   ${ADMIN_PASSWORD}${GREEN}${BOLD}"
+echo -e "  ║   ${NC}${BOLD}Portal URL:${NC}  https://${PANGOLIN_DOMAIN}/ztguard"
+echo -e "  ║   ${NC}${BOLD}Password:${NC}    ${ADMIN_PASSWORD}"
 echo "  ╠══════════════════════════════════════════════════════════════╣"
 echo "  ║   Next steps:                                               ║"
 echo "  ║   1. Open the portal URL above                              ║"
