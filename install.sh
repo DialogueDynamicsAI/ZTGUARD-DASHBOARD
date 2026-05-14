@@ -59,7 +59,7 @@ done
 
 if [[ -z "$PANGOLIN_DIR" ]]; then
     warn "Could not auto-detect Pangolin installation."
-    read -rp "  Enter Pangolin installation path [/opt/pangolin]: " input_dir
+    read -rp "  Enter Pangolin installation path [/opt/pangolin]: " input_dir < /dev/tty
     PANGOLIN_DIR="${input_dir:-/opt/pangolin}"
     [[ -f "$PANGOLIN_DIR/docker-compose.yml" ]] || error "No docker-compose.yml found at $PANGOLIN_DIR"
 fi
@@ -80,7 +80,7 @@ fi
 
 if [[ -z "$PANGOLIN_DOMAIN" ]]; then
     warn "Could not auto-detect domain from Pangolin config."
-    read -rp "  Enter your Pangolin domain (e.g. ztna.example.com): " PANGOLIN_DOMAIN
+    read -rp "  Enter your Pangolin domain (e.g. ztna.example.com): " PANGOLIN_DOMAIN < /dev/tty
     [[ -n "$PANGOLIN_DOMAIN" ]] || error "Domain is required"
 fi
 success "Domain: $PANGOLIN_DOMAIN"
@@ -94,7 +94,7 @@ success "Docker network: $DOCKER_NETWORK"
 step "Checking for existing installation..."
 if [[ -d "$INSTALL_DIR" ]]; then
     warn "ZTGuard portal already installed at $INSTALL_DIR"
-    read -rp "  Overwrite existing installation? [y/N]: " overwrite
+    read -rp "  Overwrite existing installation? [y/N]: " overwrite < /dev/tty
     if [[ "${overwrite,,}" != "y" ]]; then
         info "Exiting without changes."
         exit 0
@@ -261,7 +261,7 @@ else
     if [[ -f "$TRAEFIK_DYNAMIC_CONFIG" ]]; then
         # Write Python script to temp file (avoids bash heredoc mangling backticks)
         TRAEFIK_PY="/tmp/ztguard_traefik_$$.py"
-        cat > "$TRAEFIK_PY" << PYEOF
+        cat > "$TRAEFIK_PY" << 'PYEOF'
 import sys
 domain = sys.argv[1]
 config_file = sys.argv[2]
@@ -290,8 +290,13 @@ service_entry = """
 
 if 'routers:' in content and 'ztguard-portal' not in content:
     content = content.replace('  routers:', '  routers:' + router_entry, 1)
-if 'services:' in content and 'ztguard-portal-svc' not in content:
-    content = content.replace('  services:', '  services:' + service_entry, 1)
+
+if 'ztguard-portal-svc' not in content:
+    if 'services:' in content:
+        content = content.replace('  services:', '  services:' + service_entry, 1)
+    else:
+        # No services: section exists — append one inside the http: block
+        content = content.rstrip() + '\n  services:' + service_entry
 
 with open(config_file, 'w') as f:
     f.write(content)
