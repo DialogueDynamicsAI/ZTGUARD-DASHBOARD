@@ -280,6 +280,14 @@ router_entry = """
       service: ztguard-portal-svc
       tls:
         certResolver: letsencrypt
+    integration-api-router:
+      rule: "Host({bt}{domain}{bt}) && PathPrefix({bt}/v1{bt})"
+      service: integration-api-service
+      entryPoints:
+        - websecure
+      priority: 150
+      tls:
+        certResolver: letsencrypt
 """.format(bt=bt, domain=domain)
 
 service_entry = """
@@ -287,6 +295,10 @@ service_entry = """
       loadBalancer:
         servers:
           - url: "http://ztguard-portal:3100"
+    integration-api-service:
+      loadBalancer:
+        servers:
+          - url: "http://pangolin:3003"
 """
 
 if 'routers:' in content and 'ztguard-portal' not in content:
@@ -328,6 +340,31 @@ EOF
         info "Created standalone Traefik route at $TRAEFIK_DYNAMIC_DIR/ztguard-portal.yml"
     fi
     success "Traefik route configured"
+fi
+
+# ── Enable Pangolin integration API (required for API key auth on port 3003) ──
+step "Enabling Pangolin integration API..."
+if [[ -f "$PANGOLIN_CONFIG" ]]; then
+    if grep -q "enable_integration_api" "$PANGOLIN_CONFIG" 2>/dev/null; then
+        info "enable_integration_api already set in config.yml"
+    else
+        # Add to flags: section if it exists, otherwise append
+        if grep -q "^flags:" "$PANGOLIN_CONFIG" 2>/dev/null; then
+            python3 - << PYEOF
+with open('$PANGOLIN_CONFIG') as f:
+    content = f.read()
+import re
+content = re.sub(r'(^flags:\s*\n)', r'\1    enable_integration_api: true\n', content, flags=re.MULTILINE)
+with open('$PANGOLIN_CONFIG', 'w') as f:
+    f.write(content)
+print('  Added enable_integration_api to flags section')
+PYEOF
+        else
+            printf '\nflags:\n    enable_integration_api: true\n' >> "$PANGOLIN_CONFIG"
+            info "Added flags section with enable_integration_api"
+        fi
+        success "Integration API enabled in config.yml"
+    fi
 fi
 
 # ── Restart Pangolin to apply patches ─────────────────────────────────────────
