@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  ztguard-portal:
+    build: .
+    container_name: ztguard-portal
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - {{BRANDING_DIR}}/logos:/app/brand-logos
+      - {{BRANDING_DIR}}:/app/pangolin-css
+      - {{PANGOLIN_DB_DIR}}:/app/pangolin-db:ro
+      - {{PANGOLIN_DIR}}/config:/app/pangolin-config
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - {{DOCKER_NETWORK}}
+    labels:
+      - "traefik.enable=false"
+
+networks:
+  {{DOCKER_NETWORK}}:
+    external: true
