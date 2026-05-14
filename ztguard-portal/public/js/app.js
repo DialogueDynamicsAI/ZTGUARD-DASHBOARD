@@ -1028,10 +1028,10 @@ async function initSecurity() {
                 <input type="checkbox" id="signupToggle" ${signupDisabled ? 'checked' : ''} ${configMissing ? 'disabled' : ''}
                   style="opacity:0;width:0;height:0;position:absolute"
                   onchange="updateSignupToggleVisual()">
-                <span id="signupToggleTrack" onclick="document.getElementById('signupToggle').click()"
+                <span id="signupToggleTrack"
                   style="position:absolute;inset:0;border-radius:24px;cursor:${configMissing ? 'not-allowed' : 'pointer'};transition:background .2s;
                     background:${signupDisabled ? '#2563eb' : '#d1d5db'}"></span>
-                <span id="signupToggleThumb" onclick="document.getElementById('signupToggle').click()"
+                <span id="signupToggleThumb"
                   style="position:absolute;left:${signupDisabled ? '22px' : '2px'};top:2px;width:20px;height:20px;background:white;border-radius:50%;
                     box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left .2s;cursor:${configMissing ? 'not-allowed' : 'pointer'}"></span>
               </label>
