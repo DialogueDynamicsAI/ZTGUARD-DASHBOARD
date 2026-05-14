@@ -178,6 +178,7 @@ if [[ -n "$COMPOSE_TEMPLATE" ]]; then
     sed \
         -e "s|{{BRANDING_DIR}}|$BRANDING_DIR|g" \
         -e "s|{{PANGOLIN_DB_DIR}}|$PANGOLIN_DB_DIR|g" \
+        -e "s|{{PANGOLIN_DIR}}|$PANGOLIN_DIR|g" \
         -e "s|{{DOCKER_NETWORK}}|$DOCKER_NETWORK|g" \
         "$COMPOSE_TEMPLATE" > "$INSTALL_DIR/docker-compose.yml"
 else
@@ -195,6 +196,8 @@ services:
       - ${BRANDING_DIR}/logos:/app/brand-logos
       - ${BRANDING_DIR}:/app/pangolin-css
       - ${PANGOLIN_DB_DIR}:/app/pangolin-db:ro
+      - ${PANGOLIN_DIR}/config:/app/pangolin-config
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - ${DOCKER_NETWORK}
     labels:

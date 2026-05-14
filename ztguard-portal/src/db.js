@@ -60,6 +60,11 @@ db.exec(`
     value TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS mail_config (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+  );
+
   -- ── Alerting & Health Checks ─────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS health_checks (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -222,6 +227,23 @@ const insertConfig = db.prepare(
 );
 for (const [key, value] of CONNECTION_DEFAULTS) {
   insertConfig.run(key, value);
+}
+
+// Seed mail config defaults (blank — configured via UI)
+const MAIL_DEFAULTS = [
+  ['smtp_host',    ''],
+  ['smtp_port',    '587'],
+  ['smtp_from',    ''],
+  ['smtp_user',    ''],
+  ['smtp_pass',    ''],
+  ['smtp_tls',     'starttls'],
+  ['smtp_enabled', '0'],
+];
+const insertMail = db.prepare(
+  `INSERT OR IGNORE INTO mail_config (key, value) VALUES (?, ?)`
+);
+for (const [key, value] of MAIL_DEFAULTS) {
+  insertMail.run(key, value);
 }
 
 module.exports = db;

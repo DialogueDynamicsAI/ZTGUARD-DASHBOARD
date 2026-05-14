@@ -9,6 +9,7 @@ const PAGE_META = {
   'delivery-history': { title: 'Delivery History',    sub: 'Event forwarding activity log' },
   'branding':         { title: 'Branding',            sub: 'Customize your Pangolin organization appearance' },
   'settings':         { title: 'Connection Settings', sub: 'Pangolin API configuration' },
+  'mail-relay':       { title: 'Mail Relay',          sub: 'SMTP configuration for Pangolin email notifications' },
 };
 
 let currentPage = 'dashboard';
@@ -43,6 +44,7 @@ function navigate(page) {
   if (page === 'delivery-history') initDeliveryHistory();
   if (page === 'branding')         initBranding();
   if (page === 'settings')         initSettings();
+  if (page === 'mail-relay')       initMailRelay();
 
   history.pushState({}, '', `${BASE}/${page === 'dashboard' ? '' : page}`);
 }
@@ -423,6 +425,162 @@ document.addEventListener('click', (e) => {
     if (chevron) chevron.style.transform = '';
   }
 });
+
+/* ─── Mail Relay ─────────────────────────────────────────────────────────── */
+async function initMailRelay() {
+  const page = document.getElementById('page-mail-relay');
+  document.getElementById('topbarActions').innerHTML = '';
+  page.innerHTML = `<div style="text-align:center;padding:60px"><div class="spinner"></div></div>`;
+
+  let cfg = {};
+  try { cfg = await api('/api/mail'); } catch (_) {}
+
+  const tlsOpts = [
+    { val: 'starttls', label: 'STARTTLS (port 587 — recommended)' },
+    { val: 'ssl',      label: 'SSL/TLS (port 465)' },
+    { val: 'none',     label: 'None / plain (not recommended)' },
+  ];
+  const tlsSelect = tlsOpts.map(o =>
+    `<option value="${o.val}" ${cfg.smtp_tls === o.val ? 'selected' : ''}>${o.label}</option>`
+  ).join('');
+
+  page.innerHTML = `
+    <div style="max-width:640px">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>SMTP Relay Configuration</h3></div>
+        <div class="card-body">
+          <div id="mailStatus" style="margin-bottom:16px"></div>
+
+          <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;margin-bottom:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">SMTP Host <span class="req">*</span></label>
+              <input class="form-input" id="mlHost" value="${escHtml(cfg.smtp_host||'')}" placeholder="relay.vpdc.ca">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Port</label>
+              <input class="form-input" id="mlPort" type="number" value="${escHtml(cfg.smtp_port||'587')}" placeholder="587">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Security</label>
+            <select class="form-select" id="mlTls">${tlsSelect}</select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">From Address <span class="req">*</span></label>
+            <input class="form-input" id="mlFrom" value="${escHtml(cfg.smtp_from||'')}" placeholder="noreply@yourdomain.com">
+            <div class="form-hint">Shown as the sender in Pangolin notification emails.</div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">SMTP Username</label>
+              <input class="form-input" id="mlUser" value="${escHtml(cfg.smtp_user||'')}" placeholder="user@example.com">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">SMTP Password</label>
+              <input class="form-input" id="mlPass" type="password" placeholder="${cfg.smtp_pass_set ? '(saved — leave blank to keep)' : 'Enter password'}">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="mlEnabled" ${cfg.smtp_enabled ? 'checked' : ''} style="width:16px;height:16px">
+              <span class="form-label" style="margin:0">Enable email (writes to Pangolin config.yml)</span>
+            </label>
+            <div class="form-hint">When enabled, SMTP settings are written to Pangolin's config file. Restart Pangolin to apply.</div>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+            <button class="btn btn-primary" onclick="saveMailRelay()">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              Save Settings
+            </button>
+            <button class="btn btn-secondary" onclick="sendTestEmail()">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              Send Test Email
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Apply to Pangolin</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:#6b7280;margin:0 0 12px">
+            After saving SMTP settings, restart Pangolin to pick up the changes. Pangolin will be briefly unavailable (~10s).
+          </p>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-secondary" onclick="restartPangolin()" id="restartBtn">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              Apply &amp; Restart Pangolin
+            </button>
+            <div id="restartStatus"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveMailRelay() {
+  const payload = {
+    smtp_host:    document.getElementById('mlHost')?.value?.trim(),
+    smtp_port:    document.getElementById('mlPort')?.value?.trim(),
+    smtp_from:    document.getElementById('mlFrom')?.value?.trim(),
+    smtp_user:    document.getElementById('mlUser')?.value?.trim(),
+    smtp_pass:    document.getElementById('mlPass')?.value,
+    smtp_tls:     document.getElementById('mlTls')?.value,
+    smtp_enabled: document.getElementById('mlEnabled')?.checked,
+  };
+
+  const statusEl = document.getElementById('mailStatus');
+  try {
+    const r = await api('/api/mail', { method: 'POST', body: payload });
+    const msg = r.pangolin_config_written
+      ? 'Settings saved and written to Pangolin config.yml. Restart Pangolin to apply.'
+      : 'Settings saved. (Pangolin config.yml not mounted — will apply on next install.)';
+    statusEl.innerHTML = `<div class="alert alert-success">${msg}</div>`;
+    showToast('Mail settings saved', 'success');
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+  }
+}
+
+async function sendTestEmail() {
+  const to = prompt('Send test email to:', 'jamielove069@gmail.com');
+  if (!to) return;
+
+  const statusEl = document.getElementById('mailStatus');
+  statusEl.innerHTML = `<div class="alert alert-info">Sending test email to ${escHtml(to)}…</div>`;
+
+  try {
+    const r = await api('/api/mail/test', { method: 'POST', body: { to } });
+    statusEl.innerHTML = `<div class="alert alert-success">${r.message}</div>`;
+    showToast('Test email sent!', 'success');
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert-error">Failed: ${err.message}</div>`;
+  }
+}
+
+async function restartPangolin() {
+  const btn = document.getElementById('restartBtn');
+  const statusEl = document.getElementById('restartStatus');
+  btn.disabled = true;
+  btn.textContent = 'Restarting…';
+  statusEl.innerHTML = `<span style="color:#6b7280;font-size:13px">Sending restart command…</span>`;
+
+  try {
+    const r = await api('/api/mail/restart', { method: 'POST' });
+    statusEl.innerHTML = `<span style="color:#16a34a;font-size:13px">✓ ${r.message}</span>`;
+    showToast('Pangolin restarted', 'success');
+  } catch (err) {
+    statusEl.innerHTML = `<span style="color:#dc2626;font-size:13px">${err.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Apply &amp; Restart Pangolin`;
+  }
+}
 
 /* ─── Boot ──────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {

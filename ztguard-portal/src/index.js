@@ -16,6 +16,7 @@ const activityRoutes = require('./routes/activity');
 const orgsRoutes = require('./routes/orgs');
 const alertingRoutes = require('./routes/alerting');
 const { router: connectionRoutes, getConfig, applyConfig } = require('./routes/connection');
+const mailRoutes = require('./routes/mail');
 const { startPoller } = require('./poller');
 const { startAlerter } = require('./alerter');
 
@@ -101,6 +102,7 @@ app.use(BASE + '/api/destinations', requireAuth, injectActiveOrg, destinationRou
 app.use(BASE + '/api/history',      requireAuth, injectActiveOrg, historyRoutes);
 app.use(BASE + '/api/activity',     requireAuth, injectActiveOrg, activityRoutes);
 app.use(BASE + '/api/branding',     requireAuth, injectActiveOrg, brandingRoutes);
+app.use(BASE + '/api/mail',         requireAuth, mailRoutes);
 
 // ── API: status ───────────────────────────────────────────────────────────────
 app.get(BASE + '/api/status', requireAuth, injectActiveOrg, (req, res) => {
