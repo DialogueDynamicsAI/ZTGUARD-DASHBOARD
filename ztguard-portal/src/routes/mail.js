@@ -100,6 +100,15 @@ router.post('/restart', async (req, res) => {
   }
 });
 
+// ── GET /api/mail/log — return recent mail activity ──────────────────────────
+router.get('/log', (req, res) => {
+  const limit = parseInt(req.query.limit || '50', 10);
+  const logs = db.prepare(
+    `SELECT * FROM mail_log ORDER BY id DESC LIMIT ?`
+  ).all(limit);
+  res.json({ ok: true, logs });
+});
+
 // ── POST /api/mail/test — send a test email ───────────────────────────────────
 router.post('/test', async (req, res) => {
   const { to } = req.body;
@@ -139,11 +148,36 @@ router.post('/test', async (req, res) => {
     });
 
     console.log(`[mail] Test email sent to ${to}: ${info.messageId}`);
+    db.prepare(
+      `INSERT INTO mail_log (source, recipient, subject, status, message_id) VALUES (?, ?, ?, ?, ?)`
+    ).run('ztguard-test', to, 'ZTGuard — SMTP Test Email', 'sent', info.messageId);
     res.json({ ok: true, message: `Test email sent to ${to}`, messageId: info.messageId });
   } catch (err) {
     console.error('[mail] Test email failed:', err.message);
+    db.prepare(
+      `INSERT INTO mail_log (source, recipient, subject, status, error) VALUES (?, ?, ?, ?, ?)`
+    ).run('ztguard-test', to, 'ZTGuard — SMTP Test Email', 'failed', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+// ── GET /api/mail/pangolin-log — tail Pangolin container logs for email entries ─
+router.get('/pangolin-log', (req, res) => {
+  const { exec } = require('child_process');
+  // Pull last 200 lines from Pangolin container logs, filter for email/smtp/password/invite
+  exec('docker logs pangolin --tail 200 2>&1', { timeout: 8000 }, (err, stdout) => {
+    if (err && !stdout) {
+      return res.json({ ok: false, lines: [], error: 'Cannot read Pangolin logs (Docker socket not accessible)' });
+    }
+    const lines = (stdout || '')
+      .split('\n')
+      .filter(l => /email|smtp|password.?reset|invite|send.?mail|mail.?send/i.test(l))
+      .map(l => l.replace(/\x1b\[[0-9;]*m/g, '').trim()) // strip ANSI
+      .filter(Boolean)
+      .reverse()
+      .slice(0, 50);
+    res.json({ ok: true, lines });
+  });
 });
 
 // ── Helper: write email block to Pangolin config.yml ─────────────────────────

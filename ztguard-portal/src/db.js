@@ -65,6 +65,17 @@ db.exec(`
     value TEXT NOT NULL DEFAULT ''
   );
 
+  CREATE TABLE IF NOT EXISTS mail_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    source      TEXT    NOT NULL DEFAULT 'ztguard',
+    recipient   TEXT    NOT NULL,
+    subject     TEXT,
+    status      TEXT    NOT NULL DEFAULT 'sent',
+    message_id  TEXT,
+    error       TEXT,
+    sent_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
   -- ── Alerting & Health Checks ─────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS health_checks (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

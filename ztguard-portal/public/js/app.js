@@ -520,7 +520,112 @@ async function initMailRelay() {
           </div>
         </div>
       </div>
+
+      <div class="card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+          <h3>Mail Activity Log</h3>
+          <button class="btn btn-secondary btn-sm" onclick="refreshMailLog()">Refresh</button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div id="mailLogTabs" style="display:flex;gap:0;border-bottom:1px solid #e5e7eb">
+            <button id="mlTabZtguard" onclick="showMailTab('ztguard')" style="padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;border-bottom:2px solid #2563eb;color:#2563eb;cursor:pointer">
+              ZTGuard Sent (${mailLogData ? mailLogData.length : 0})
+            </button>
+            <button id="mlTabPangolin" onclick="showMailTab('pangolin')" style="padding:10px 16px;font-size:13px;color:#6b7280;border:none;background:none;cursor:pointer">
+              Pangolin Email Activity
+            </button>
+          </div>
+          <div id="mailLogZtguard" style="overflow-x:auto"></div>
+          <div id="mailLogPangolin" style="display:none;padding:12px"></div>
+        </div>
+      </div>
     </div>`;
+
+  // Load log data
+  loadMailLog();
+}
+
+let mailLogData = [];
+let activMailTab = 'ztguard';
+
+async function loadMailLog() {
+  try {
+    const r = await api('/api/mail/log');
+    mailLogData = r.logs || [];
+    renderMailLog(mailLogData);
+    // Update tab count
+    const tab = document.getElementById('mlTabZtguard');
+    if (tab) tab.textContent = `ZTGuard Sent (${mailLogData.length})`;
+  } catch (_) {}
+}
+
+function renderMailLog(logs) {
+  const el = document.getElementById('mailLogZtguard');
+  if (!el) return;
+  if (!logs.length) {
+    el.innerHTML = `<div style="padding:20px;text-align:center;color:#6b7280;font-size:13px">No emails sent yet. Use "Send Test Email" to verify SMTP.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:#f8fafc">
+          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Time</th>
+          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Recipient</th>
+          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Subject</th>
+          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Source</th>
+          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${logs.map(l => `
+          <tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:9px 14px;color:#6b7280;white-space:nowrap">${l.sent_at}</td>
+            <td style="padding:9px 14px;color:#111827">${escHtml(l.recipient)}</td>
+            <td style="padding:9px 14px;color:#374151">${escHtml(l.subject || '')}</td>
+            <td style="padding:9px 14px;color:#6b7280">${escHtml(l.source || '')}</td>
+            <td style="padding:9px 14px">
+              <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;${l.status === 'sent' ? 'background:#dcfce7;color:#16a34a' : 'background:#fee2e2;color:#dc2626'}">
+                ${l.status === 'sent' ? '✓ Sent' : '✗ Failed'}
+              </span>
+              ${l.error ? `<div style="font-size:11px;color:#dc2626;margin-top:2px">${escHtml(l.error)}</div>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function showMailTab(tab) {
+  activMailTab = tab;
+  document.getElementById('mailLogZtguard').style.display = tab === 'ztguard' ? 'block' : 'none';
+  document.getElementById('mailLogPangolin').style.display = tab === 'pangolin' ? 'block' : 'none';
+  document.getElementById('mlTabZtguard').style.cssText = tab === 'ztguard'
+    ? 'padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;border-bottom:2px solid #2563eb;color:#2563eb;cursor:pointer'
+    : 'padding:10px 16px;font-size:13px;color:#6b7280;border:none;background:none;cursor:pointer';
+  document.getElementById('mlTabPangolin').style.cssText = tab === 'pangolin'
+    ? 'padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;border-bottom:2px solid #2563eb;color:#2563eb;cursor:pointer'
+    : 'padding:10px 16px;font-size:13px;color:#6b7280;border:none;background:none;cursor:pointer';
+
+  if (tab === 'pangolin') {
+    const el = document.getElementById('mailLogPangolin');
+    el.innerHTML = `<div style="color:#6b7280;font-size:13px">Loading Pangolin email activity…</div>`;
+    try {
+      const r = await api('/api/mail/pangolin-log');
+      if (!r.lines || !r.lines.length) {
+        el.innerHTML = `<div style="color:#6b7280;font-size:13px">No email-related entries found in Pangolin logs. Emails are logged when Pangolin sends password resets, invitations, or alerts.</div>`;
+      } else {
+        el.innerHTML = `<div style="font-family:monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:#111827">${r.lines.map(l => escHtml(l)).join('\n')}</div>`;
+      }
+    } catch (e) {
+      el.innerHTML = `<div style="color:#dc2626;font-size:13px">${e.message}</div>`;
+    }
+  }
+}
+
+async function refreshMailLog() {
+  await loadMailLog();
+  if (activMailTab === 'pangolin') showMailTab('pangolin');
+  showToast('Mail log refreshed', 'info');
 }
 
 async function saveMailRelay() {
@@ -558,8 +663,10 @@ async function sendTestEmail() {
     const r = await api('/api/mail/test', { method: 'POST', body: { to } });
     statusEl.innerHTML = `<div class="alert alert-success">${r.message}</div>`;
     showToast('Test email sent!', 'success');
+    await loadMailLog();
   } catch (err) {
     statusEl.innerHTML = `<div class="alert alert-error">Failed: ${err.message}</div>`;
+    await loadMailLog();
   }
 }
 
