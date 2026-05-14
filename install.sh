@@ -222,6 +222,7 @@ if [[ -z "$PATCH_SCRIPT" ]]; then
     PATCH_SCRIPT="/tmp/ztguard-patch-branding-$$.sh"
     info "Downloading patch-branding.sh from GitHub..."
     if curl -fsSL "${REPO_URL}/raw/main/install/patch-branding.sh" -o "$PATCH_SCRIPT" 2>/dev/null; then
+        sed -i 's/\r//' "$PATCH_SCRIPT"  # strip Windows CRLF if present
         chmod +x "$PATCH_SCRIPT"
     else
         rm -f "$PATCH_SCRIPT"
@@ -341,21 +342,21 @@ step "Starting ZTGuard portal..."
 cd "$INSTALL_DIR"
 docker compose up -d --build 2>&1 | tail -5
 
-# Wait for startup
-info "Waiting for portal to start..."
-for i in $(seq 1 30); do
-    if curl -sk -o /dev/null -w "%{http_code}" "http://localhost:3100/ztguard/login" 2>/dev/null | grep -q "200"; then
+# Wait for startup — portal is only accessible via Traefik (not on localhost directly)
+info "Waiting for portal to start (checking via Traefik)..."
+for i in $(seq 1 20); do
+    HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${PANGOLIN_DOMAIN}/ztguard/login" 2>/dev/null || echo "000")
+    if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" ]]; then
+        success "Portal is live (HTTP $HTTP_CODE)"
         break
     fi
-    sleep 2
+    info "  attempt $i: HTTP $HTTP_CODE — waiting..."
+    sleep 3
 done
 
-# Verify
 HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${PANGOLIN_DOMAIN}/ztguard/login" 2>/dev/null || echo "000")
-if [[ "$HTTP_CODE" == "200" ]]; then
-    success "Portal is live and responding"
-else
-    warn "Portal may still be starting (HTTP $HTTP_CODE). Check: docker logs ztguard-portal"
+if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "302" ]]; then
+    warn "Portal not responding (HTTP $HTTP_CODE). Check: docker logs ztguard-portal"
 fi
 
 # ── Save install record ────────────────────────────────────────────────────────

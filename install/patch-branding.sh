@@ -74,37 +74,37 @@ with open('$AUTH_CHUNK_ORIG') as f:
 patched = js
 count = 0
 
-# Remove "Powered by Pangolin" ternary (CE branch)
-m = re.search(r'eh\(\)&&"enterprise"===D\.j\?[^:]+:(\(0,r\.jsx\)\("div",\{className:"text-center mb-2"[^}]+\}[^)]+\)[^)]+\))', js)
-if m:
-    full_ternary = 'eh()&&"enterprise"===D.j?' + re.search(r'eh\(\)&&"enterprise"===D\.j\?(.*?)\(0,r\.jsxs\)\(o\.Zp', js, re.DOTALL).group(1).rstrip(',') if re.search(r'eh\(\)&&"enterprise"===D\.j\?', js) else ''
+# ── Strategy: find and replace both "Powered by" div blocks directly ──────────
+# The CE block always renders with hardcoded "Pangolin" as children
+ce_div = '(0,r.jsx)("div",{className:"text-center mb-2",children:(0,r.jsxs)("span",{className:"text-sm text-muted-foreground",children:[ex("poweredBy")," ",(0,r.jsx)(C(),{href:"https://pangolin.net/",target:"_blank",rel:"noopener noreferrer",className:"underline",children:"Pangolin"})]})})'
+if ce_div in patched:
+    patched = patched.replace(ce_div, 'null', 1)
+    count += 1
+    print('  Removed CE powered-by block')
 
-# Simpler approach: find and replace the specific patterns
-# Pattern 1: null==s?void 0:s.visible (supporter key notice)
+# The Enterprise block uses eE.branding.appName — find wrapping div and replace
+ent_marker = 'children:eE.branding.appName||"Pangolin"'
+if ent_marker not in patched:
+    ent_marker = 'children:eE.branding.appName||"Pangolin"'
+pos = patched.find(ent_marker)
+if pos >= 0:
+    div_start = patched.rfind('(0,r.jsx)("div",{className:"text-center mb-2"', 0, pos)
+    if div_start < 0:
+        div_start = patched.rfind('(0,r.jsxs)("div",{className:"text-center mb-2"', 0, pos)
+    if div_start >= 0:
+        end_m = re.search(r'\}\)\}\)', patched[div_start:div_start+600])
+        if end_m:
+            full_block = patched[div_start:div_start+end_m.end()]
+            patched = patched.replace(full_block, 'null', 1)
+            count += 1
+            print('  Removed enterprise powered-by block')
+
+# Legacy pattern: null==s?void 0:s.visible (supporter key notice, older Pangolin)
 old1 = '(null==s?void 0:s.visible)'
 if old1 in patched:
     patched = patched.replace(old1, 'null', 1)
     count += 1
-    print(f'  Removed supporter key notice')
-
-# Pattern 2: CE powered-by branch (finds the else branch of the enterprise ternary)
-# The CE else branch renders href="https://pangolin.net/"
-old2_marker = 'href:"https://pangolin.net/",target:"_blank",rel:"noopener noreferrer",className:"underline",children:"Pangolin"'
-if old2_marker in patched:
-    # Find the full ternary and replace its else branch with null
-    ternary_start = patched.rfind('eh()&&"enterprise"===D.j?', 0, patched.find(old2_marker))
-    if ternary_start >= 0:
-        # Find the colon separating the ternary branches
-        colon_pos = patched.find(':(0,r.jsx)("div",{className:"text-center mb-2"', ternary_start)
-        if colon_pos >= 0:
-            # Find end of the else branch (the closing paren+brace pattern)
-            end_match = re.search(r'\)\}\)\)', patched[colon_pos:colon_pos+800])
-            if end_match:
-                else_end = colon_pos + end_match.end()
-                original_else = patched[colon_pos:else_end]
-                patched = patched[:colon_pos] + ':null' + patched[else_end:]
-                count += 1
-                print(f'  Removed CE powered-by branch')
+    print('  Removed supporter key notice (legacy)')
 
 print(f'  Total patches applied: {count}')
 with open('$AUTH_CHUNK_PATCHED', 'w') as f:
@@ -113,7 +113,8 @@ with open('$AUTH_CHUNK_ACTIVE', 'w') as f:
     f.write(patched)
 PYEOF
 
-    NEW_HASH="${AUTH_CHUNK_HASH:0:-1}e"  # change last char: d→e
+    NEW_HASH="${AUTH_CHUNK_HASH:0:-1}e"  # change last char for cache-busting
+    echo "${NEW_HASH}" > "$BRANDING_DIR/.auth-hash"  # save for Step 5 volume mount
     info "  Renaming hash: $AUTH_CHUNK_HASH → $NEW_HASH"
     docker exec "$PANGOLIN_CONTAINER" sh -c \
         "grep -rl '$AUTH_CHUNK_HASH' /app/.next/ 2>/dev/null | while read f; do sed -i 's/$AUTH_CHUNK_HASH/$NEW_HASH/g' \"\$f\"; done; echo done"
@@ -162,6 +163,7 @@ else:
 PYEOF
 
     NEW_SIDEBAR_HASH=$(echo "$SIDEBAR_HASH" | sed 's/.$/5/')
+    echo "${NEW_SIDEBAR_HASH}" > "$BRANDING_DIR/.sidebar-hash"  # save for Step 5 volume mount
     info "  Renaming hash: $SIDEBAR_HASH → $NEW_SIDEBAR_HASH"
     docker exec "$PANGOLIN_CONTAINER" sh -c \
         "grep -rl '$SIDEBAR_HASH' /app/.next/ 2>/dev/null | while read f; do sed -i 's/$SIDEBAR_HASH/$NEW_SIDEBAR_HASH/g' \"\$f\"; done; echo done"
@@ -220,46 +222,48 @@ CSS_HASH=$(cat "$BRANDING_DIR/.css-hash" 2>/dev/null || echo "")
 if grep -q "pangolin-branding" "$COMPOSE_FILE" 2>/dev/null; then
     warn "Volume mounts already present in docker-compose.yml — skipping"
 else
-    # Find the pangolin service volumes section and add our mounts
+    # Build volume mounts using saved hash files (written by Steps 1 & 2)
     python3 - << PYEOF
-import re
+import os
 
 with open('$COMPOSE_FILE') as f:
     content = f.read()
 
-css_hash = open('$BRANDING_DIR/.css-hash').read().strip() if __import__('os').path.exists('$BRANDING_DIR/.css-hash') else ''
-sidebar_hash = ''
-try:
-    import subprocess
-    r = subprocess.run(['bash', '-c', 'grep -rl "sidebar-chunk" $BRANDING_DIR/ 2>/dev/null | grep active'], capture_output=True, text=True)
-except: pass
+branding = '$BRANDING_DIR'
 
-# Add volume mounts after './config:/app/config'
+# Read saved hashes
+css_hash    = open(f'{branding}/.css-hash').read().strip()    if os.path.exists(f'{branding}/.css-hash')    else ''
+sidebar_hash = open(f'{branding}/.sidebar-hash').read().strip() if os.path.exists(f'{branding}/.sidebar-hash') else ''
+auth_hash    = open(f'{branding}/.auth-hash').read().strip()    if os.path.exists(f'{branding}/.auth-hash')    else ''
+
 old = '      - ./config:/app/config'
 new_mounts = '      - ./config:/app/config'
+
+# CSS override (new hash path — cache-busted)
 if css_hash:
-    new_mounts += f'\n      - $BRANDING_DIR/{css_hash}.css:/app/.next/static/css/{css_hash}.css:ro'
-if '$SIDEBAR_ACTIVE':
-    import subprocess
-    r = subprocess.run(['bash', '-c', 'ls $BRANDING_DIR/sidebar-chunk-active.js 2>/dev/null'], capture_output=True, text=True)
-    if r.returncode == 0:
-        # Get the new sidebar hash from the patched chunk name
-        r2 = subprocess.run(['bash', '-c', 'grep "3211-" $PANGOLIN_DIR/docker-compose.yml 2>/dev/null | head -1'], capture_output=True, text=True)
-        if not r2.stdout.strip():
-            # Find sidebar hash by checking manifests
-            r3 = subprocess.run(['bash', '-c', 'docker exec $PANGOLIN_CONTAINER find /app/.next/static/chunks -name "3211-*.js" 2>/dev/null | head -1'], capture_output=True, text=True)
-            sidebar_file = r3.stdout.strip().split('/')[-1]
-            if sidebar_file:
-                new_mounts += f'\n      - $BRANDING_DIR/sidebar-chunk-active.js:/app/.next/static/chunks/{sidebar_file}:ro'
-new_mounts += '\n      - $BRANDING_DIR/logos/word_mark_black.png:/app/public/logo/word_mark_black.png:ro'
-new_mounts += '\n      - $BRANDING_DIR/logos/word_mark_white.png:/app/public/logo/word_mark_white.png:ro'
-new_mounts += '\n      - $BRANDING_DIR/logos/word_mark.png:/app/public/logo/word_mark.png:ro'
+    new_mounts += f'\n      - {branding}/{css_hash}.css:/app/.next/static/css/{css_hash}.css:ro'
+
+# Sidebar chunk (NEW hash — that is what manifests now reference)
+if sidebar_hash and os.path.exists(f'{branding}/sidebar-chunk-active.js'):
+    new_mounts += f'\n      - {branding}/sidebar-chunk-active.js:/app/.next/static/chunks/{sidebar_hash}.js:ro'
+
+# Auth resource page chunk (NEW hash)
+if auth_hash and os.path.exists(f'{branding}/auth-resource-page-patched-new.js'):
+    new_mounts += f'\n      - {branding}/auth-resource-page-patched-new.js:/app/.next/static/chunks/pages/auth/resource/page-{auth_hash}.js:ro'
+
+# Wordmark logos
+new_mounts += f'\n      - {branding}/logos/word_mark_black.png:/app/public/logo/word_mark_black.png:ro'
+new_mounts += f'\n      - {branding}/logos/word_mark_white.png:/app/public/logo/word_mark_white.png:ro'
+new_mounts += f'\n      - {branding}/logos/word_mark.png:/app/public/logo/word_mark.png:ro'
 
 if old in content:
     content = content.replace(old, new_mounts, 1)
     with open('$COMPOSE_FILE', 'w') as f:
         f.write(content)
     print('  Volume mounts added to docker-compose.yml')
+    print(f'  CSS hash: {css_hash}')
+    print(f'  Sidebar hash: {sidebar_hash}')
+    print(f'  Auth hash: {auth_hash}')
 else:
     print('  WARNING: Could not find mount point in docker-compose.yml')
 PYEOF
