@@ -36,14 +36,23 @@ function writeFlag(flagName, value) {
 }
 
 function restartPangolin() {
+  const http = require('http');
   return new Promise((resolve) => {
-    exec('docker restart pangolin', { timeout: 30000 }, (err, stdout, stderr) => {
-      if (err) {
-        resolve({ ok: false, error: err.message });
-      } else {
+    const req = http.request({
+      socketPath: '/var/run/docker.sock',
+      path: '/containers/pangolin/restart',
+      method: 'POST',
+    }, (res) => {
+      res.resume();
+      if (res.statusCode === 204 || res.statusCode === 200) {
         resolve({ ok: true });
+      } else {
+        resolve({ ok: false, error: `Docker API returned HTTP ${res.statusCode}` });
       }
     });
+    req.on('error', (err) => resolve({ ok: false, error: err.message }));
+    req.setTimeout(30000, () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
+    req.end();
   });
 }
 

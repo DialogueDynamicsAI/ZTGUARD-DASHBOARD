@@ -65,38 +65,28 @@ router.post('/', (req, res) => {
   res.json({ ok: true, pangolin_config_written: written });
 });
 
-// ── POST /api/mail/restart — restart Pangolin container ─────────────────────
+// ── POST /api/mail/restart — restart Pangolin container via Docker socket ────
 router.post('/restart', async (req, res) => {
+  const http = require('http');
   try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-
-    // Restart via Docker socket using the docker CLI (available in PATH on host)
-    await execAsync('docker restart pangolin', { timeout: 30000 });
+    await new Promise((resolve, reject) => {
+      const r = http.request({
+        socketPath: '/var/run/docker.sock',
+        path: '/containers/pangolin/restart',
+        method: 'POST',
+      }, (resp) => {
+        resp.resume();
+        if (resp.statusCode === 204 || resp.statusCode === 200) resolve();
+        else reject(new Error(`Docker API returned HTTP ${resp.statusCode}`));
+      });
+      r.on('error', reject);
+      r.setTimeout(30000, () => { r.destroy(); reject(new Error('timeout')); });
+      r.end();
+    });
     res.json({ ok: true, message: 'Pangolin restarted successfully' });
   } catch (err) {
     console.error('[mail] Pangolin restart failed:', err.message);
-    // Fallback: try via docker socket API directly
-    try {
-      const http = require('http');
-      await new Promise((resolve, reject) => {
-        const req2 = http.request({
-          socketPath: '/var/run/docker.sock',
-          path: '/containers/pangolin/restart',
-          method: 'POST',
-        }, (r) => {
-          if (r.statusCode === 204 || r.statusCode === 200) resolve();
-          else reject(new Error(`Docker API returned ${r.statusCode}`));
-        });
-        req2.on('error', reject);
-        req2.setTimeout(30000, () => reject(new Error('timeout')));
-        req2.end();
-      });
-      res.json({ ok: true, message: 'Pangolin restarted via Docker API' });
-    } catch (err2) {
-      res.status(500).json({ ok: false, error: `Restart failed: ${err2.message}. Restart manually: docker restart pangolin` });
-    }
+    res.status(500).json({ ok: false, error: `Restart failed: ${err.message}` });
   }
 });
 
