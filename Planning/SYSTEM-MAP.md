@@ -15,6 +15,31 @@
 
 ---
 
+## Customer Installations
+
+Each Pangolin server gets its own folder under `../Customers/{customer}/` (outside git — private data):
+
+```
+../Customers/
+  srmech/                          ← SR Mechanical test server
+    01-server-access.md            ← IP, SSH key, connection alias
+    02-deployment-log.md           ← step-by-step execution log
+    03-credentials.md              ← passwords, tokens, keys (PRIVATE)
+```
+
+### Adding a new customer
+1. Create `../Customers/{customer}/` from the templates in this folder
+2. Follow `02-deployment-log.md` — all three phases: Docker, Pangolin, ZTGuard
+3. Store setup token and credentials in `03-credentials.md`
+
+### Current customers
+
+| Customer | Domain | IP | Status |
+|---|---|---|---|
+| SR Mechanical (test) | `srmech.ztguard.net` | `216.128.181.8` | Pangolin installed, ZTGuard pending |
+
+---
+
 ## One-Command Installer
 
 ```bash
