@@ -7,6 +7,31 @@ const router = express.Router();
 
 const BRAND_LOGOS_DIR = process.env.BRAND_LOGOS_DIR || '/app/brand-logos';
 const PANGOLIN_CSS_PATH = process.env.PANGOLIN_CSS_PATH || '/app/pangolin-css/4b2b6ba26710cf1d.css';
+const PANGOLIN_CONFIG_PATH = '/app/pangolin-config/config.yml';
+
+// Write email sender name to Pangolin config.yml
+function updatePangolinEmailSender(senderName) {
+  if (!fs.existsSync(PANGOLIN_CONFIG_PATH)) return false;
+  try {
+    let content = fs.readFileSync(PANGOLIN_CONFIG_PATH, 'utf8');
+    const smtpFrom = content.match(/smtp_from:\s*"([^"]*)"/)?.[1] || '';
+    const baseEmail = smtpFrom.replace(/^.*<|>$/g, '') || smtpFrom;
+    const newValue = baseEmail ? `${senderName} <${baseEmail}>` : senderName;
+    if (content.includes('no_reply:')) {
+      content = content.replace(/no_reply:\s*"[^"]*"/, `no_reply: "${newValue}"`);
+    }
+    // Also update smtp_from display name
+    if (smtpFrom) {
+      content = content.replace(/smtp_from:\s*"[^"]*"/, `smtp_from: "${newValue}"`);
+    }
+    fs.writeFileSync(PANGOLIN_CONFIG_PATH, content, 'utf8');
+    console.log('[branding] Updated Pangolin email sender name:', newValue);
+    return true;
+  } catch (err) {
+    console.error('[branding] Failed to update email sender:', err.message);
+    return false;
+  }
+}
 const PANGOLIN_JS_CHUNK = '/app/pangolin-css/auth-resource-page-patched-new.js';
 const PANGOLIN_JS_ORIG  = '/app/pangolin-css/auth-resource-page-orig.js';
 const PANGOLIN_JS_CLEAN = '/app/pangolin-css/auth-resource-page-patched.js';
@@ -276,7 +301,8 @@ router.post('/', (req, res) => {
   const orgId = req.activeOrg;
   const { org_name, primary_color, login_url, logo_data,
           auth_title, auth_subtitle, custom_css, custom_header_html, custom_footer_html,
-          login_theme, hide_attribution, hide_sidebar_branding } = req.body;
+          login_theme, hide_attribution, hide_sidebar_branding,
+          email_sender_name, email_use_logo } = req.body;
 
   if (org_name !== undefined) set(orgId, 'org_name', org_name);
   if (primary_color !== undefined) {
@@ -318,6 +344,13 @@ router.post('/', (req, res) => {
       });
     }
   }
+
+  // Email branding fields
+  if (email_sender_name !== undefined) {
+    set(orgId, 'email_sender_name', email_sender_name);
+    updatePangolinEmailSender(email_sender_name);
+  }
+  if (email_use_logo !== undefined) set(orgId, 'email_use_logo', email_use_logo ? '1' : '0');
 
   // Optionally push org_name to Pangolin API
   const apiUrl = process.env.PANGOLIN_API_URL;

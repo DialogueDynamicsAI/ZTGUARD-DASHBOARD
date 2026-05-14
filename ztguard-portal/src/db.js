@@ -239,6 +239,8 @@ const BRANDING_DEFAULTS = [
   ['login_theme', 'dark'],
   ['hide_attribution', '1'],
   ['hide_sidebar_branding', '1'],
+  ['email_sender_name', 'ZTGuard'],
+  ['email_use_logo',    '1'],
 ];
 const insertBranding = db.prepare(
   `INSERT OR IGNORE INTO branding_config (org_id, key, value) VALUES (?, ?, ?)`

@@ -50,7 +50,7 @@ info "Branding directory: $BRANDING_DIR"
 # STEP 1: Extract and patch the resource auth page JS chunk
 #         Removes "Powered by Pangolin" and "Server is running without a supporter key"
 # ═══════════════════════════════════════════════════════════════════════════════
-info "Step 1/6: Patching resource auth page (removing Pangolin attribution)..."
+info "Step 1/9: Patching resource auth page (removing Pangolin attribution)..."
 
 AUTH_CHUNK_ORIG="$BRANDING_DIR/auth-resource-page-orig.js"
 AUTH_CHUNK_PATCHED="$BRANDING_DIR/auth-resource-page-patched.js"
@@ -126,7 +126,7 @@ fi
 # STEP 2: Extract and patch the sidebar chunk
 #         Removes "Buy Supporter Key" and "Community Edition" from dashboard
 # ═══════════════════════════════════════════════════════════════════════════════
-info "Step 2/6: Patching sidebar (removing Buy Supporter Key)..."
+info "Step 2/9: Patching sidebar (removing Buy Supporter Key)..."
 
 SIDEBAR_ORIG="$BRANDING_DIR/sidebar-chunk.js"
 SIDEBAR_PATCHED="$BRANDING_DIR/sidebar-chunk-patched.js"
@@ -174,7 +174,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 3: Extract the main Pangolin CSS and create override file
 # ═══════════════════════════════════════════════════════════════════════════════
-info "Step 3/6: Extracting main CSS for overrides..."
+info "Step 3/9: Extracting main CSS for overrides..."
 
 MAIN_CSS_PATH=$(docker exec "$PANGOLIN_CONTAINER" find /app/.next/static/css -name "4b2b6b*.css" 2>/dev/null | head -1)
 if [ -z "$MAIN_CSS_PATH" ]; then
@@ -206,7 +206,7 @@ fi
 #         (baked into the commit — avoids file-level volume mount failures on
 #          overlay filesystems)
 # ═══════════════════════════════════════════════════════════════════════════════
-info "Step 4/6: Replacing wordmark images in container..."
+info "Step 4/9: Replacing wordmark images in container..."
 
 # Extract originals to branding dir (for reference / restore)
 for f in word_mark_black.png word_mark_white.png word_mark.png; do
@@ -241,7 +241,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 5: Update Pangolin docker-compose.yml volume mounts
 # ═══════════════════════════════════════════════════════════════════════════════
-info "Step 5/6: Adding volume mounts to Pangolin docker-compose.yml..."
+info "Step 5/9: Adding volume mounts to Pangolin docker-compose.yml..."
 
 COMPOSE_FILE="$PANGOLIN_DIR/docker-compose.yml"
 CSS_HASH=$(cat "$BRANDING_DIR/.css-hash" 2>/dev/null || echo "")
@@ -309,9 +309,106 @@ fi
 success "Pangolin docker-compose.yml updated"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 6: Commit the patched Pangolin container image
+# STEP 6: Patch email templates in server.mjs
 # ═══════════════════════════════════════════════════════════════════════════════
-info "Step 6/6: Committing patched Pangolin container..."
+info "Step 6/9: Patching Pangolin email templates..."
+
+SERVER_MJS_PATH=$(docker exec "$PANGOLIN_CONTAINER" find /app/dist -name 'server.mjs' 2>/dev/null | head -1)
+if [ -z "$SERVER_MJS_PATH" ]; then
+    warn "  server.mjs not found — skipping email template patch"
+else
+    SERVER_MJS_LOCAL="$BRANDING_DIR/server-orig.mjs"
+    SERVER_MJS_PATCHED="$BRANDING_DIR/server-patched.mjs"
+    docker cp "$PANGOLIN_CONTAINER:$SERVER_MJS_PATH" "$SERVER_MJS_LOCAL"
+
+    python3 - << PYEOF
+import re, shutil
+with open('$SERVER_MJS_LOCAL') as f:
+    js = f.read()
+patched = js
+count = 0
+
+# Remove EmailSignature (Pangolin footer text inside emails)
+sig_idx = js.find('function EmailSignature()')
+if sig_idx >= 0:
+    # Find the closing brace of the function
+    brace_depth = 0
+    end_idx = sig_idx
+    in_func = False
+    for i in range(sig_idx, min(sig_idx+2000, len(js))):
+        if js[i] == '{':
+            brace_depth += 1
+            in_func = True
+        elif js[i] == '}':
+            brace_depth -= 1
+        if in_func and brace_depth == 0:
+            end_idx = i + 1
+            break
+    if end_idx > sig_idx:
+        patched = patched[:sig_idx] + 'function EmailSignature(){return null}' + patched[end_idx:]
+        count += 1
+        print('  Removed Pangolin EmailSignature footer')
+
+print(f'  Email template patches: {count}')
+with open('$SERVER_MJS_PATCHED', 'w') as f:
+    f.write(patched)
+PYEOF
+
+    docker cp "$SERVER_MJS_PATCHED" "$PANGOLIN_CONTAINER:$SERVER_MJS_PATH"
+    success "Email templates patched"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 7: Replace favicon
+# ═══════════════════════════════════════════════════════════════════════════════
+info "Step 7/9: Replacing Pangolin favicon..."
+
+FAVICON_PATH="$BRANDING_DIR/logos/ztguard_favicon.ico"
+python3 - << PYEOF 2>/dev/null || true
+try:
+    from PIL import Image, ImageDraw
+    img = Image.new('RGBA', (32, 32), (0,0,0,0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([0,0,31,31], radius=6, fill=(30,64,175,255))
+    # White Z shape
+    draw.line([(7,8),(24,8)], fill='white', width=4)
+    draw.line([(24,8),(7,24)], fill='white', width=3)
+    draw.line([(7,24),(24,24)], fill='white', width=4)
+    img.save('$FAVICON_PATH', format='ICO', sizes=[(32,32),(16,16)])
+    print('  ZTGuard favicon generated')
+except Exception as e:
+    print(f'  Favicon skipped: {e}')
+PYEOF
+
+if [ -f "$FAVICON_PATH" ]; then
+    docker cp "$FAVICON_PATH" "$PANGOLIN_CONTAINER:/app/public/favicon.ico"
+    success "Favicon replaced"
+else
+    warn "  Favicon generation skipped (Pillow unavailable)"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 8: Replace browser tab title
+# ═══════════════════════════════════════════════════════════════════════════════
+info "Step 8/9: Patching browser tab title..."
+
+TITLE_COUNT=$(docker exec "$PANGOLIN_CONTAINER" sh -c \
+    "grep -rl '\"Pangolin\"' /app/.next/server/ 2>/dev/null | wc -l" 2>/dev/null || echo "0")
+TITLE_COUNT=$(echo "$TITLE_COUNT" | tr -d ' ')
+
+if [ "${TITLE_COUNT:-0}" -gt 0 ]; then
+    docker exec "$PANGOLIN_CONTAINER" sh -c \
+        "grep -rl '\"Pangolin\"' /app/.next/server/ 2>/dev/null | \
+         xargs sed -i 's/\"Pangolin\"/\"ZTGuard\"/g' && echo done" 2>/dev/null || true
+    success "Browser title updated in ${TITLE_COUNT} file(s)"
+else
+    warn "  No Pangolin title found in layout files"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 9: Commit the patched Pangolin container image
+# ═══════════════════════════════════════════════════════════════════════════════
+info "Step 9/9: Committing patched Pangolin container..."
 
 PANGOLIN_IMAGE=$(docker inspect "$PANGOLIN_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo "")
 if [ -n "$PANGOLIN_IMAGE" ]; then

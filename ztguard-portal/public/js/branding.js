@@ -46,6 +46,7 @@ function renderBrandingPage() {
           <button class="br-tab ${activeTab==='identity'?'active':''}" onclick="switchBrTab('identity')">Identity</button>
           <button class="br-tab ${activeTab==='login'?'active':''}" onclick="switchBrTab('login')">Login Page</button>
           <button class="br-tab ${activeTab==='code'?'active':''}" onclick="switchBrTab('code')">Custom Code</button>
+          <button class="br-tab ${activeTab==='email'?'active':''}" onclick="switchBrTab('email')">Email</button>
           <button class="br-tab ${activeTab==='pangolin'?'active':''}" onclick="switchBrTab('pangolin')">Pangolin Sync</button>
         </div>
 
@@ -245,6 +246,55 @@ button.primary { border-radius: 8px; }"
             </div>
           </div>
         </div>
+
+        <!-- EMAIL TAB -->
+        <div class="br-tab-body ${activeTab==='email'?'active':''}" id="brtab-email">
+
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-header"><h3>Email Sender</h3></div>
+            <div class="card-body">
+              <div class="form-group">
+                <label class="form-label">Sender Display Name</label>
+                <input class="form-input" id="brEmailSenderName" value="${escHtml(brandingConfig.email_sender_name || 'ZTGuard')}"
+                  placeholder="ZTGuard">
+                <div class="form-hint">Shown as the sender name in Pangolin notification emails — e.g. <code>ZTGuard &lt;noreply@yourdomain.com&gt;</code></div>
+              </div>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
+                <input type="checkbox" id="brEmailUseLogo" ${brandingConfig.email_use_logo !== '0' ? 'checked' : ''}
+                  style="width:15px;height:15px">
+                <span class="form-label" style="margin:0">Apply branding patches to Pangolin email templates</span>
+              </label>
+              <div class="form-hint">When enabled, re-running the patch script will replace the Pangolin logo and name in outgoing emails.</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-header"><h3>Email Types Sent by Pangolin</h3></div>
+            <div class="card-body" style="padding:0">
+              <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead><tr style="background:#f8fafc">
+                  <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Email Type</th>
+                  <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Trigger</th>
+                  <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Branding</th>
+                </tr></thead>
+                <tbody>
+                  ${[
+                    ['Resource OTP Code',    'User accesses a protected resource',       'Sender name applies'],
+                    ['Invitation',           'Admin invites a user to the org',          'Sender name applies'],
+                    ['Password Reset',       'User requests a password reset',           'Sender name applies'],
+                    ['2FA Enabled/Disabled', 'User changes 2FA settings',                'Sender name applies'],
+                  ].map(([type, trigger, status]) => `
+                    <tr style="border-bottom:1px solid #f1f5f9">
+                      <td style="padding:9px 14px;font-weight:500;color:#111827">${type}</td>
+                      <td style="padding:9px 14px;color:#6b7280">${trigger}</td>
+                      <td style="padding:9px 14px"><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#dcfce7;color:#16a34a">${status}</span></td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /brtab-email -->
 
         <!-- PANGOLIN SYNC TAB -->
         <div class="br-tab-body ${activeTab==='pangolin'?'active':''}" id="brtab-pangolin">
@@ -674,6 +724,8 @@ async function saveBranding() {
     custom_css:         document.getElementById('brCustomCss')?.value || undefined,
     custom_header_html: document.getElementById('brHeaderHtml')?.value || undefined,
     custom_footer_html: document.getElementById('brFooterHtml')?.value || undefined,
+    email_sender_name:  document.getElementById('brEmailSenderName')?.value?.trim() || undefined,
+    email_use_logo:     document.getElementById('brEmailUseLogo')?.checked,
   };
   if (newLogoData) body.logo_data = newLogoData;
   try {
