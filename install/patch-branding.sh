@@ -328,26 +328,37 @@ with open('$SERVER_MJS_LOCAL') as f:
 patched = js
 count = 0
 
-# Remove EmailSignature (Pangolin footer text inside emails)
-sig_idx = js.find('function EmailSignature()')
-if sig_idx >= 0:
-    # Find the closing brace of the function
+def remove_function(src, fname, replacement):
+    idx = src.find(fname)
+    if idx < 0:
+        return src, False
     brace_depth = 0
-    end_idx = sig_idx
+    end_idx = idx
     in_func = False
-    for i in range(sig_idx, min(sig_idx+2000, len(js))):
-        if js[i] == '{':
+    for i in range(idx, min(idx + 4000, len(src))):
+        if src[i] == '{':
             brace_depth += 1
             in_func = True
-        elif js[i] == '}':
+        elif src[i] == '}':
             brace_depth -= 1
         if in_func and brace_depth == 0:
             end_idx = i + 1
             break
-    if end_idx > sig_idx:
-        patched = patched[:sig_idx] + 'function EmailSignature(){return null}' + patched[end_idx:]
-        count += 1
-        print('  Removed Pangolin EmailSignature footer')
+    if end_idx > idx:
+        return src[:idx] + replacement + src[end_idx:], True
+    return src, False
+
+# Remove EmailSignature (Pangolin footer)
+patched, ok = remove_function(patched, 'function EmailSignature()', 'function EmailSignature(){return null}')
+if ok:
+    count += 1
+    print('  Removed Pangolin EmailSignature footer')
+
+# Remove EmailHeader (Pangolin logo + PANGOLIN name in email header)
+patched, ok = remove_function(patched, 'function EmailHeader(', 'function EmailHeader(){return null}')
+if ok:
+    count += 1
+    print('  Removed Pangolin EmailHeader logo/name')
 
 print(f'  Email template patches: {count}')
 with open('$SERVER_MJS_PATCHED', 'w') as f:
