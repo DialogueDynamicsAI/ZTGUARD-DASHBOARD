@@ -31,7 +31,16 @@ fi
 
 python3 -c "from PIL import Image" 2>/dev/null || {
     info "Installing Pillow for image processing..."
-    pip3 install Pillow -q 2>/dev/null || python3 -m pip install Pillow -q
+    # Try apt package first (Debian/Ubuntu managed environments)
+    if apt-get install -y python3-pil -qq >/dev/null 2>&1; then
+        info "Pillow installed via apt (python3-pil)"
+    elif pip3 install Pillow -q --break-system-packages 2>/dev/null; then
+        info "Pillow installed via pip"
+    elif python3 -m pip install Pillow -q --break-system-packages 2>/dev/null; then
+        info "Pillow installed via python3 -m pip"
+    else
+        warn "Could not install Pillow — wordmark images will be skipped"
+    fi
 }
 
 mkdir -p "$BRANDING_DIR/logos"

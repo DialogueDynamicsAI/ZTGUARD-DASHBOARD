@@ -291,7 +291,8 @@ service_entry = """
 if 'routers:' in content and 'ztguard-portal' not in content:
     content = content.replace('  routers:', '  routers:' + router_entry, 1)
 
-if 'ztguard-portal-svc' not in content:
+# Check for the service *definition* (loadBalancer), not the router's service: reference
+if 'ztguard-portal-svc:' not in content:
     if 'services:' in content:
         content = content.replace('  services:', '  services:' + service_entry, 1)
     else:
