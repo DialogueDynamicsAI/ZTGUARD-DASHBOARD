@@ -226,6 +226,18 @@ done
 [[ $CUSTOM_LOGOS_COPIED -gt 0 ]] && info "  Copied $CUSTOM_LOGOS_COPIED custom logo(s) into container"
 success "Wordmark images ready (originals saved to $BRANDING_DIR/logos/)"
 
+# Create ZTGuard icon SVG to replace the Pangolin phoenix in dashboard header
+if [[ ! -f "$BRANDING_DIR/logos/ztguard_icon.svg" ]]; then
+    cat > "$BRANDING_DIR/logos/ztguard_icon.svg" << 'SVGEOF'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="16" fill="#1e40af"/>
+  <text x="50" y="72" font-family="Arial,sans-serif" font-size="68" font-weight="900"
+    text-anchor="middle" fill="white">Z</text>
+</svg>
+SVGEOF
+    info "  Created ZTGuard icon (replaces Pangolin phoenix in dashboard)"
+fi
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 5: Update Pangolin docker-compose.yml volume mounts
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -269,8 +281,16 @@ if auth_hash and auth_chunk_path and os.path.exists(f'{branding}/auth-resource-p
     auth_dir = os.path.dirname(auth_chunk_path)
     new_mounts += f'\n      - {branding}/auth-resource-page-patched-new.js:{auth_dir}/page-{auth_hash}.js:ro'
 
-# NOTE: Wordmark logos are baked into the committed image (Step 4) — no file-level
-# volume mounts needed (file mounts fail on overlay filesystems)
+# Wordmark logos — volume mount so ZTGuard portal can swap them via branding page
+for logo_file in ['word_mark_black.png', 'word_mark_white.png', 'word_mark.png']:
+    if os.path.exists(f'{branding}/logos/{logo_file}'):
+        new_mounts += f'\n      - {branding}/logos/{logo_file}:/app/public/logo/{logo_file}:ro'
+
+# ZTGuard icon replaces the Pangolin orange phoenix in the dashboard header
+ztguard_svg = f'{branding}/logos/ztguard_icon.svg'
+if os.path.exists(ztguard_svg):
+    new_mounts += f'\n      - {ztguard_svg}:/app/public/logo/pangolin_orange.svg:ro'
+    new_mounts += f'\n      - {ztguard_svg}:/app/public/logo/pangolin_black.svg:ro'
 
 if old in content:
     content = content.replace(old, new_mounts, 1)
