@@ -194,7 +194,7 @@ if [ -n "$MAIN_CSS_PATH" ]; then
     docker exec "$PANGOLIN_CONTAINER" sh -c \
         "grep -rl '$CSS_HASH' /app/.next/ 2>/dev/null | while read f; do sed -i 's/$CSS_HASH/$NEW_CSS_HASH/g' \"\$f\"; done; echo done"
 
-    cp "$BRANDING_DIR/${CSS_HASH}.css" "$BRANDING_DIR/${NEW_CSS_HASH}.css"
+    [[ "$CSS_HASH" != "$NEW_CSS_HASH" ]] && cp "$BRANDING_DIR/${CSS_HASH}.css" "$BRANDING_DIR/${NEW_CSS_HASH}.css" || true
     echo "$NEW_CSS_HASH" > "$BRANDING_DIR/.css-hash"
     success "CSS override file ready (hash: $NEW_CSS_HASH)"
 else
