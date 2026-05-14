@@ -345,28 +345,41 @@ EOF
     success "Traefik route configured"
 fi
 
-# ── Enable Pangolin integration API (required for API key auth on port 3003) ──
-step "Enabling Pangolin integration API..."
+# ── Enable Pangolin flags (integration API + disable public signup) ────────────
+step "Configuring Pangolin flags..."
 if [[ -f "$PANGOLIN_CONFIG" ]]; then
-    if grep -q "enable_integration_api" "$PANGOLIN_CONFIG" 2>/dev/null; then
-        info "enable_integration_api already set in config.yml"
-    else
-        # Add to flags: section if it exists, otherwise append
+    # Build list of flags that need to be added
+    FLAGS_TO_ADD=()
+    grep -q "enable_integration_api" "$PANGOLIN_CONFIG" 2>/dev/null \
+        && info "enable_integration_api already set in config.yml" \
+        || FLAGS_TO_ADD+=("enable_integration_api: true")
+    grep -q "disable_signup_without_invite" "$PANGOLIN_CONFIG" 2>/dev/null \
+        && info "disable_signup_without_invite already set in config.yml" \
+        || FLAGS_TO_ADD+=("disable_signup_without_invite: true")
+
+    if [[ ${#FLAGS_TO_ADD[@]} -gt 0 ]]; then
         if grep -q "^flags:" "$PANGOLIN_CONFIG" 2>/dev/null; then
             python3 - << PYEOF
 with open('$PANGOLIN_CONFIG') as f:
     content = f.read()
 import re
-content = re.sub(r'(^flags:\s*\n)', r'\1    enable_integration_api: true\n', content, flags=re.MULTILINE)
+flags_to_add = [$(printf '"%s",' "${FLAGS_TO_ADD[@]}")]
+insert = ''.join(f'    {flag}\n' for flag in flags_to_add)
+content = re.sub(r'(^flags:\s*\n)', r'\1' + insert, content, flags=re.MULTILINE)
 with open('$PANGOLIN_CONFIG', 'w') as f:
     f.write(content)
-print('  Added enable_integration_api to flags section')
+print('  Added flags: ' + ', '.join(flags_to_add))
 PYEOF
         else
-            printf '\nflags:\n    enable_integration_api: true\n' >> "$PANGOLIN_CONFIG"
-            info "Added flags section with enable_integration_api"
+            {
+                printf '\nflags:\n'
+                for flag in "${FLAGS_TO_ADD[@]}"; do
+                    printf '    %s\n' "$flag"
+                done
+            } >> "$PANGOLIN_CONFIG"
+            info "Added flags section to config.yml"
         fi
-        success "Integration API enabled in config.yml"
+        success "Pangolin flags configured"
     fi
 fi
 

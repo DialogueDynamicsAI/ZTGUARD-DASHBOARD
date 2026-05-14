@@ -100,13 +100,39 @@ router.post('/restart', async (req, res) => {
   }
 });
 
-// ── GET /api/mail/log — return recent mail activity ──────────────────────────
+// ── GET /api/mail/log — paginated, filtered, sorted mail activity ─────────────
 router.get('/log', (req, res) => {
-  const limit = parseInt(req.query.limit || '50', 10);
-  const logs = db.prepare(
-    `SELECT * FROM mail_log ORDER BY id DESC LIMIT ?`
-  ).all(limit);
-  res.json({ ok: true, logs });
+  const page     = Math.max(1, parseInt(req.query.page   || '1',  10));
+  const perPage  = Math.min(100, Math.max(5, parseInt(req.query.per_page || '25', 10)));
+  const offset   = (page - 1) * perPage;
+  const search   = (req.query.search || '').trim();
+  const status   = req.query.status  || '';   // 'sent' | 'failed' | ''
+  const source   = req.query.source  || '';
+  const sortCol  = ['id','recipient','subject','source','status','sent_at']
+                     .includes(req.query.sort) ? req.query.sort : 'id';
+  const sortDir  = req.query.dir === 'asc' ? 'ASC' : 'DESC';
+
+  const conditions = [];
+  const params = [];
+
+  if (search) {
+    conditions.push(`(recipient LIKE ? OR subject LIKE ? OR source LIKE ?)`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  if (status) { conditions.push(`status = ?`); params.push(status); }
+  if (source) { conditions.push(`source = ?`); params.push(source); }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const total = db.prepare(`SELECT COUNT(*) as n FROM mail_log ${where}`).get(...params).n;
+  const logs  = db.prepare(
+    `SELECT * FROM mail_log ${where} ORDER BY ${sortCol} ${sortDir} LIMIT ? OFFSET ?`
+  ).all(...params, perPage, offset);
+
+  res.json({
+    ok: true, logs,
+    pagination: { page, per_page: perPage, total, pages: Math.ceil(total / perPage) },
+  });
 });
 
 // ── POST /api/mail/test — send a test email ───────────────────────────────────

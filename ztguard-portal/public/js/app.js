@@ -533,7 +533,7 @@ async function initMailRelay() {
         <div class="card-body" style="padding:0">
           <div id="mailLogTabs" style="display:flex;gap:0;border-bottom:1px solid #e5e7eb">
             <button id="mlTabZtguard" onclick="showMailTab('ztguard')" style="padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;border-bottom:2px solid #2563eb;color:#2563eb;cursor:pointer">
-              ZTGuard Sent (${mailLogData ? mailLogData.length : 0})
+              ZTGuard Sent
             </button>
             <button id="mlTabPangolin" onclick="showMailTab('pangolin')" style="padding:10px 16px;font-size:13px;color:#6b7280;border:none;background:none;cursor:pointer">
               Pangolin Email Activity
@@ -549,86 +549,139 @@ async function initMailRelay() {
   loadMailLog();
 }
 
-let mailLogData = [];
-let activMailTab = 'ztguard';
+// ── Mail Log state ────────────────────────────────────────────────────────────
+const _mailLog = { page: 1, perPage: 25, sort: 'id', dir: 'desc', search: '', status: '', tab: 'ztguard' };
 
 async function loadMailLog() {
+  const el = document.getElementById('mailLogZtguard');
+  if (!el) return;
+  const q = new URLSearchParams({
+    page: _mailLog.page, per_page: _mailLog.perPage,
+    sort: _mailLog.sort, dir: _mailLog.dir,
+    search: _mailLog.search, status: _mailLog.status,
+  });
   try {
-    const r = await api('/api/mail/log');
-    mailLogData = r.logs || [];
-    renderMailLog(mailLogData);
-    // Update tab count
-    const tab = document.getElementById('mlTabZtguard');
-    if (tab) tab.textContent = `ZTGuard Sent (${mailLogData.length})`;
+    const r = await api(`/api/mail/log?${q}`);
+    renderMailLog(r.logs || [], r.pagination || {});
   } catch (_) {}
 }
 
-function renderMailLog(logs) {
+function renderMailLog(logs, pg) {
   const el = document.getElementById('mailLogZtguard');
   if (!el) return;
-  if (!logs.length) {
-    el.innerHTML = `<div style="padding:20px;text-align:center;color:#6b7280;font-size:13px">No emails sent yet. Use "Send Test Email" to verify SMTP.</div>`;
-    return;
-  }
+  const total = pg.total || 0;
+  const pages = pg.pages || 1;
+
+  // Column sort helper
+  const th = (col, label) => {
+    const active = _mailLog.sort === col;
+    const nextDir = active && _mailLog.dir === 'desc' ? 'asc' : 'desc';
+    const arrow = active ? (_mailLog.dir === 'desc' ? ' ↓' : ' ↑') : '';
+    return `<th onclick="mailLogSort('${col}','${nextDir}')" style="padding:10px 14px;text-align:left;color:${active?'#2563eb':'#374151'};font-weight:600;border-bottom:1px solid #e5e7eb;cursor:pointer;white-space:nowrap;user-select:none">${label}${arrow}</th>`;
+  };
+
+  const rows = logs.length ? logs.map(l => `
+    <tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:9px 14px;color:#6b7280;white-space:nowrap;font-size:12px">${l.sent_at}</td>
+      <td style="padding:9px 14px;color:#111827;font-size:13px">${escHtml(l.recipient)}</td>
+      <td style="padding:9px 14px;color:#374151;font-size:13px">${escHtml(l.subject||'')}</td>
+      <td style="padding:9px 14px;color:#6b7280;font-size:12px">${escHtml(l.source||'')}</td>
+      <td style="padding:9px 14px">
+        <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;
+          ${l.status==='sent'?'background:#dcfce7;color:#16a34a':'background:#fee2e2;color:#dc2626'}">
+          ${l.status==='sent'?'✓ Sent':'✗ Failed'}
+        </span>
+        ${l.error?`<div style="font-size:11px;color:#dc2626;margin-top:2px">${escHtml(l.error)}</div>`:''}
+      </td>
+    </tr>`).join('') :
+    `<tr><td colspan="5" style="padding:24px;text-align:center;color:#6b7280;font-size:13px">No emails found</td></tr>`;
+
+  // Pagination controls
+  const pageNums = [];
+  for (let i = Math.max(1, _mailLog.page-2); i <= Math.min(pages, _mailLog.page+2); i++) pageNums.push(i);
+  const pagBtns = pageNums.map(n =>
+    `<button onclick="mailLogGoPage(${n})" style="min-width:32px;padding:4px 8px;border-radius:6px;border:1px solid ${n===_mailLog.page?'#2563eb':'#e5e7eb'};background:${n===_mailLog.page?'#2563eb':'white'};color:${n===_mailLog.page?'white':'#374151'};font-size:13px;cursor:pointer">${n}</button>`
+  ).join('');
+
   el.innerHTML = `
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead>
-        <tr style="background:#f8fafc">
-          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Time</th>
-          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Recipient</th>
-          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Subject</th>
-          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Source</th>
-          <th style="padding:10px 14px;text-align:left;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${logs.map(l => `
-          <tr style="border-bottom:1px solid #f1f5f9">
-            <td style="padding:9px 14px;color:#6b7280;white-space:nowrap">${l.sent_at}</td>
-            <td style="padding:9px 14px;color:#111827">${escHtml(l.recipient)}</td>
-            <td style="padding:9px 14px;color:#374151">${escHtml(l.subject || '')}</td>
-            <td style="padding:9px 14px;color:#6b7280">${escHtml(l.source || '')}</td>
-            <td style="padding:9px 14px">
-              <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;${l.status === 'sent' ? 'background:#dcfce7;color:#16a34a' : 'background:#fee2e2;color:#dc2626'}">
-                ${l.status === 'sent' ? '✓ Sent' : '✗ Failed'}
-              </span>
-              ${l.error ? `<div style="font-size:11px;color:#dc2626;margin-top:2px">${escHtml(l.error)}</div>` : ''}
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
+    <!-- Filters bar -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc">
+      <input class="form-input" type="search" id="mlSearch" value="${escHtml(_mailLog.search)}"
+        placeholder="Search recipient, subject…" style="max-width:220px;height:32px;padding:4px 10px;font-size:13px"
+        oninput="mailLogSearchDebounce(this.value)">
+      <select id="mlStatusFilter" onchange="mailLogFilter()" style="height:32px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#374151">
+        <option value="" ${_mailLog.status===''?'selected':''}>All status</option>
+        <option value="sent" ${_mailLog.status==='sent'?'selected':''}>Sent only</option>
+        <option value="failed" ${_mailLog.status==='failed'?'selected':''}>Failed only</option>
+      </select>
+      <select id="mlPerPage" onchange="mailLogPerPage()" style="height:32px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#374151">
+        ${[10,25,50,100].map(n=>`<option value="${n}" ${_mailLog.perPage===n?'selected':''}>${n} / page</option>`).join('')}
+      </select>
+      <span style="margin-left:auto;font-size:12px;color:#6b7280">${total} total</span>
+    </div>
+    <!-- Table -->
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f8fafc">
+          ${th('sent_at','Time')}${th('recipient','Recipient')}${th('subject','Subject')}${th('source','Source')}${th('status','Status')}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <!-- Pagination -->
+    ${pages > 1 ? `
+    <div style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-top:1px solid #e5e7eb;flex-wrap:wrap">
+      <button onclick="mailLogGoPage(1)" ${_mailLog.page===1?'disabled':''} style="padding:4px 8px;border-radius:6px;border:1px solid #e5e7eb;background:white;font-size:13px;cursor:pointer;color:#374151">«</button>
+      <button onclick="mailLogGoPage(${_mailLog.page-1})" ${_mailLog.page<=1?'disabled':''} style="padding:4px 8px;border-radius:6px;border:1px solid #e5e7eb;background:white;font-size:13px;cursor:pointer;color:#374151">‹</button>
+      ${pagBtns}
+      <button onclick="mailLogGoPage(${_mailLog.page+1})" ${_mailLog.page>=pages?'disabled':''} style="padding:4px 8px;border-radius:6px;border:1px solid #e5e7eb;background:white;font-size:13px;cursor:pointer;color:#374151">›</button>
+      <button onclick="mailLogGoPage(${pages})" ${_mailLog.page===pages?'disabled':''} style="padding:4px 8px;border-radius:6px;border:1px solid #e5e7eb;background:white;font-size:13px;cursor:pointer;color:#374151">»</button>
+      <span style="font-size:12px;color:#6b7280;margin-left:4px">Page ${_mailLog.page} of ${pages}</span>
+    </div>` : ''}`;
 }
 
+let _mlSearchTimer;
+function mailLogSearchDebounce(v) {
+  clearTimeout(_mlSearchTimer);
+  _mlSearchTimer = setTimeout(() => { _mailLog.search = v; _mailLog.page = 1; loadMailLog(); }, 300);
+}
+function mailLogFilter() {
+  _mailLog.status = document.getElementById('mlStatusFilter')?.value || '';
+  _mailLog.page = 1; loadMailLog();
+}
+function mailLogPerPage() {
+  _mailLog.perPage = parseInt(document.getElementById('mlPerPage')?.value || '25');
+  _mailLog.page = 1; loadMailLog();
+}
+function mailLogSort(col, dir) {
+  _mailLog.sort = col; _mailLog.dir = dir; _mailLog.page = 1; loadMailLog();
+}
+function mailLogGoPage(n) { _mailLog.page = n; loadMailLog(); }
+
 async function showMailTab(tab) {
-  activMailTab = tab;
+  _mailLog.tab = tab;
   document.getElementById('mailLogZtguard').style.display = tab === 'ztguard' ? 'block' : 'none';
   document.getElementById('mailLogPangolin').style.display = tab === 'pangolin' ? 'block' : 'none';
-  document.getElementById('mlTabZtguard').style.cssText = tab === 'ztguard'
+  const tabStyle = (active) => active
     ? 'padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;border-bottom:2px solid #2563eb;color:#2563eb;cursor:pointer'
     : 'padding:10px 16px;font-size:13px;color:#6b7280;border:none;background:none;cursor:pointer';
-  document.getElementById('mlTabPangolin').style.cssText = tab === 'pangolin'
-    ? 'padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;border-bottom:2px solid #2563eb;color:#2563eb;cursor:pointer'
-    : 'padding:10px 16px;font-size:13px;color:#6b7280;border:none;background:none;cursor:pointer';
-
+  document.getElementById('mlTabZtguard').style.cssText  = tabStyle(tab === 'ztguard');
+  document.getElementById('mlTabPangolin').style.cssText = tabStyle(tab === 'pangolin');
   if (tab === 'pangolin') {
     const el = document.getElementById('mailLogPangolin');
-    el.innerHTML = `<div style="color:#6b7280;font-size:13px">Loading Pangolin email activity…</div>`;
+    el.innerHTML = `<div style="color:#6b7280;font-size:13px;padding:12px">Loading…</div>`;
     try {
       const r = await api('/api/mail/pangolin-log');
-      if (!r.lines || !r.lines.length) {
-        el.innerHTML = `<div style="color:#6b7280;font-size:13px">No email-related entries found in Pangolin logs. Emails are logged when Pangolin sends password resets, invitations, or alerts.</div>`;
-      } else {
-        el.innerHTML = `<div style="font-family:monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:#111827">${r.lines.map(l => escHtml(l)).join('\n')}</div>`;
-      }
-    } catch (e) {
-      el.innerHTML = `<div style="color:#dc2626;font-size:13px">${e.message}</div>`;
-    }
+      el.innerHTML = r.lines?.length
+        ? `<div style="font-family:monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:#111827;padding:12px">${r.lines.map(l => escHtml(l)).join('\n')}</div>`
+        : `<div style="color:#6b7280;font-size:13px;padding:12px">No email-related entries in Pangolin logs yet.</div>`;
+    } catch (e) { el.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:12px">${e.message}</div>`; }
   }
 }
 
 async function refreshMailLog() {
   await loadMailLog();
-  if (activMailTab === 'pangolin') showMailTab('pangolin');
+  if (_mailLog.tab === 'pangolin') showMailTab('pangolin');
   showToast('Mail log refreshed', 'info');
 }
 
