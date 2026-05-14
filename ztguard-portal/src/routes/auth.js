@@ -245,13 +245,45 @@ router.post('/api/auth/2fa/disable', requireAuth, (req, res) => {
 router.post('/api/auth/2fa/send-test-otp', requireAuth, async (req, res) => {
   const adminEmail = getCfg('admin_email');
   if (!adminEmail) return res.status(400).json({ error: 'Set your admin email first' });
+
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const sent = await sendMail(adminEmail, 'ZTGuard — OTP Test',
-    `<p>Your test OTP: <strong>${code}</strong> (this is just a test — code not saved)</p>`,
-    `Your test OTP: ${code}`
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+
+  // Save as a test OTP so it can be verified
+  db.prepare('DELETE FROM admin_otp_codes WHERE used = 0').run();
+  db.prepare('INSERT INTO admin_otp_codes (code_hash, expires_at) VALUES (?, ?)').run(codeHash, expiresAt);
+
+  const sent = await sendMail(adminEmail, 'ZTGuard — OTP Test Code',
+    `<div style="font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:24px">
+      <div style="background:#1e40af;padding:16px;border-radius:8px 8px 0 0">
+        <h2 style="color:white;margin:0;font-size:18px">ZTGuard OTP Test</h2>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+        <p style="color:#374151;margin:0 0 16px">Your test verification code:</p>
+        <div style="font-size:36px;font-weight:800;letter-spacing:8px;color:#1e40af;text-align:center;padding:16px;background:#eff6ff;border-radius:8px">${code}</div>
+        <p style="color:#6b7280;font-size:12px;margin-top:12px">Enter this code in the ZTGuard Account & Security page to confirm email OTP is working.</p>
+      </div>
+    </div>`,
+    `Your ZTGuard OTP test code: ${code}`
   );
   if (!sent) return res.status(500).json({ error: 'Failed to send email. Check Mail Relay settings.' });
-  res.json({ ok: true, message: `Test OTP sent to ${adminEmail}` });
+  res.json({ ok: true, message: `Test OTP sent to ${adminEmail} — enter the code below to verify` });
+});
+
+// ── POST /api/auth/2fa/verify-test-otp ───────────────────────────────────────
+router.post('/api/auth/2fa/verify-test-otp', requireAuth, async (req, res) => {
+  const { code } = req.body;
+  const otpRow = db.prepare('SELECT * FROM admin_otp_codes WHERE used = 0 ORDER BY id DESC LIMIT 1').get();
+  if (!otpRow) return res.status(400).json({ error: 'No test code pending. Send a new test OTP first.' });
+  if (Date.now() > otpRow.expires_at) {
+    db.prepare('UPDATE admin_otp_codes SET used = 1 WHERE id = ?').run(otpRow.id);
+    return res.status(400).json({ error: 'Code expired. Send a new test OTP.' });
+  }
+  const valid = await bcrypt.compare(code, otpRow.code_hash);
+  if (!valid) return res.status(401).json({ error: 'Incorrect code. Check the email and try again.' });
+  db.prepare('UPDATE admin_otp_codes SET used = 1 WHERE id = ?').run(otpRow.id);
+  res.json({ ok: true, message: '✓ Code verified! Email OTP is working correctly.' });
 });
 
 // ── POST /forgot-password ─────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ services:
       - /opt/pangolin-branding/logos:/app/brand-logos
       - /opt/pangolin-branding:/app/pangolin-css
       - /opt/pangolin/config/db:/app/pangolin-db:ro
+      - /opt/pangolin/config:/app/pangolin-config
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - pangolin
     labels:

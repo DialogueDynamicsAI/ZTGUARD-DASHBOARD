@@ -11,6 +11,7 @@ const PAGE_META = {
   'settings':         { title: 'Connection Settings', sub: 'Pangolin API configuration' },
   'mail-relay':       { title: 'Mail Relay',          sub: 'SMTP configuration for Pangolin email notifications' },
   'account':          { title: 'Account & Security',  sub: 'Password, two-factor authentication' },
+  'security':         { title: 'Security',            sub: 'Pangolin access control — registration and signup settings' },
 };
 
 let currentPage = 'dashboard';
@@ -47,6 +48,7 @@ function navigate(page) {
   if (page === 'settings')         initSettings();
   if (page === 'mail-relay')       initMailRelay();
   if (page === 'account')          initAccount();
+  if (page === 'security')         initSecurity();
 
   history.pushState({}, '', `${BASE}/${page === 'dashboard' ? '' : page}`);
 }
@@ -896,11 +898,152 @@ async function disable2fa() {
 
 async function sendTestOtp() {
   const st = document.getElementById('twofaStatus');
+  st.innerHTML = `<div class="alert alert-info">Sending OTP…</div>`;
   try {
     const r = await api('/api/auth/2fa/send-test-otp', { method: 'POST' });
-    st.innerHTML = `<div class="alert alert-success">${r.message}</div>`;
-    showToast('OTP sent!', 'success');
+    st.innerHTML = `
+      <div class="alert alert-success" style="margin-bottom:10px">${r.message}</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="form-input" type="text" id="testOtpInput"
+          placeholder="Enter the 6-digit code from email"
+          style="max-width:220px;letter-spacing:3px;text-align:center;font-size:18px"
+          maxlength="6" autofocus>
+        <button class="btn btn-primary btn-sm" onclick="verifyTestOtp()">Verify</button>
+      </div>
+      <div id="testOtpResult" style="margin-top:8px"></div>`;
+    document.getElementById('testOtpInput')?.focus();
+    showToast('OTP sent — check your email', 'success');
   } catch (e) { st.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+async function verifyTestOtp() {
+  const code = document.getElementById('testOtpInput')?.value?.trim();
+  const result = document.getElementById('testOtpResult');
+  if (!code) { result.innerHTML = `<div class="alert alert-error">Enter the code</div>`; return; }
+  try {
+    const r = await api('/api/auth/2fa/verify-test-otp', { method: 'POST', body: { code } });
+    result.innerHTML = `<div class="alert alert-success">${r.message}</div>`;
+    showToast('Email OTP verified!', 'success');
+  } catch (e) { result.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+/* ─── Security (Pangolin Access Control) ────────────────────────────────── */
+async function initSecurity() {
+  const page = document.getElementById('page-security');
+  document.getElementById('topbarActions').innerHTML = '';
+  page.innerHTML = `<div style="text-align:center;padding:60px"><div class="spinner"></div></div>`;
+
+  let cfg = {};
+  try { cfg = await api('/api/security'); } catch (_) {}
+
+  const configMissing = cfg.configMissing;
+  const signupDisabled = cfg.disable_signup_without_invite === true;
+
+  page.innerHTML = `
+    <div style="max-width:620px">
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Access Control</h3>
+          <span style="font-size:11px;color:#64748b;font-weight:500">Server-wide &mdash; applies to all organizations</span>
+        </div>
+        <div class="card-body">
+
+          ${configMissing ? `
+            <div class="alert alert-error" style="margin-bottom:16px">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              <div>
+                <strong>Pangolin config.yml not found.</strong><br>
+                The volume <code>/opt/pangolin/config:/app/pangolin-config</code> is not mounted.
+                Re-run the ZTGuard installer or add the volume to <code>docker-compose.yml</code> manually and restart the portal.
+              </div>
+            </div>` : ''}
+
+          <div id="securityStatus" style="margin-bottom:16px"></div>
+
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin-bottom:20px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px">Disable public signup</div>
+                <div style="font-size:12px;color:#6b7280;line-height:1.6">
+                  When enabled, the <em>Create Account</em> page on the Pangolin dashboard is blocked.
+                  New users can only be added by an admin or via an invite link.
+                  Saves to <code>config.yml</code> and restarts Pangolin (~10s downtime).
+                </div>
+              </div>
+              <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-top:2px">
+                <input type="checkbox" id="signupToggle" ${signupDisabled ? 'checked' : ''} ${configMissing ? 'disabled' : ''}
+                  style="opacity:0;width:0;height:0;position:absolute"
+                  onchange="updateSignupToggleVisual()">
+                <span id="signupToggleTrack" onclick="document.getElementById('signupToggle').click()"
+                  style="position:absolute;inset:0;border-radius:24px;cursor:${configMissing ? 'not-allowed' : 'pointer'};transition:background .2s;
+                    background:${signupDisabled ? '#2563eb' : '#d1d5db'}"></span>
+                <span id="signupToggleThumb" onclick="document.getElementById('signupToggle').click()"
+                  style="position:absolute;left:${signupDisabled ? '22px' : '2px'};top:2px;width:20px;height:20px;background:white;border-radius:50%;
+                    box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left .2s;cursor:${configMissing ? 'not-allowed' : 'pointer'}"></span>
+              </label>
+            </div>
+            <div id="signupToggleState" style="margin-top:12px;font-size:12px;font-weight:600;${signupDisabled ? 'color:#16a34a' : 'color:#6b7280'}">
+              ${signupDisabled ? '● Signup is DISABLED — users must be invited' : '○ Signup is ENABLED — anyone can self-register'}
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="saveSecuritySettings()" ${configMissing ? 'disabled' : ''}>
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              Save &amp; Restart Pangolin
+            </button>
+            <span style="font-size:11px;color:#9ca3af">Pangolin will restart (~10s) to apply the change</span>
+          </div>
+
+        </div>
+      </div>
+
+    </div>`;
+}
+
+function updateSignupToggleVisual() {
+  const checkbox = document.getElementById('signupToggle');
+  const track    = document.getElementById('signupToggleTrack');
+  const thumb    = document.getElementById('signupToggleThumb');
+  const state    = document.getElementById('signupToggleState');
+  if (!checkbox) return;
+  const checked = checkbox.checked;
+  if (track) track.style.background = checked ? '#2563eb' : '#d1d5db';
+  if (thumb) thumb.style.left = checked ? '22px' : '2px';
+  if (state) {
+    state.textContent = checked
+      ? '● Signup is DISABLED — users must be invited'
+      : '○ Signup is ENABLED — anyone can self-register';
+    state.style.color = checked ? '#16a34a' : '#6b7280';
+  }
+}
+
+async function saveSecuritySettings() {
+  const checkbox = document.getElementById('signupToggle');
+  const statusEl = document.getElementById('securityStatus');
+  if (!checkbox) return;
+
+  const disable = checkbox.checked;
+  statusEl.innerHTML = `<div class="alert alert-info">Saving and restarting Pangolin…</div>`;
+
+  try {
+    const r = await api('/api/security', {
+      method: 'POST',
+      body: { disable_signup_without_invite: disable },
+    });
+
+    if (r.warning) {
+      statusEl.innerHTML = `<div class="alert alert-info">${escHtml(r.warning)}</div>`;
+      showToast('Settings saved (restart manually)', 'info');
+    } else {
+      statusEl.innerHTML = `<div class="alert alert-success">${escHtml(r.message)}</div>`;
+      showToast(disable ? 'Public signup disabled' : 'Public signup enabled', 'success');
+    }
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert-error">${escHtml(err.message)}</div>`;
+    showToast('Save failed: ' + err.message, 'error');
+  }
 }
 
 /* ─── Boot ──────────────────────────────────────────────────────────────── */
