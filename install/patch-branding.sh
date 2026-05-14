@@ -114,7 +114,8 @@ with open('$AUTH_CHUNK_ACTIVE', 'w') as f:
 PYEOF
 
     NEW_HASH="${AUTH_CHUNK_HASH:0:-1}e"  # change last char for cache-busting
-    echo "${NEW_HASH}" > "$BRANDING_DIR/.auth-hash"  # save for Step 5 volume mount
+    echo "${NEW_HASH}" > "$BRANDING_DIR/.auth-hash"          # save for Step 5 volume mount
+    echo "${AUTH_CHUNK_PATH}" > "$BRANDING_DIR/.auth-chunk-path"  # save full path for correct mount
     info "  Renaming hash: $AUTH_CHUNK_HASH → $NEW_HASH"
     docker exec "$PANGOLIN_CONTAINER" sh -c \
         "grep -rl '$AUTH_CHUNK_HASH' /app/.next/ 2>/dev/null | while read f; do sed -i 's/$AUTH_CHUNK_HASH/$NEW_HASH/g' \"\$f\"; done; echo done"
@@ -201,14 +202,29 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 4: Extract and replace wordmark images (login page logo)
+# STEP 4: Extract wordmark images and copy custom logos INTO the container
+#         (baked into the commit — avoids file-level volume mount failures on
+#          overlay filesystems)
 # ═══════════════════════════════════════════════════════════════════════════════
-info "Step 4/6: Extracting wordmark images..."
+info "Step 4/6: Replacing wordmark images in container..."
 
+# Extract originals to branding dir (for reference / restore)
 for f in word_mark_black.png word_mark_white.png word_mark.png; do
     docker cp "$PANGOLIN_CONTAINER:/app/public/logo/$f" "$BRANDING_DIR/logos/$f" 2>/dev/null || true
 done
-success "Wordmark images extracted to $BRANDING_DIR/logos/"
+
+# If custom logos already exist in the branding logos dir (placed by user or ZTGuard portal),
+# copy them INTO the running container so they get baked into the committed image
+CUSTOM_LOGOS_COPIED=0
+for f in word_mark_black.png word_mark_white.png word_mark.png; do
+    CUSTOM="$BRANDING_DIR/logos/custom_$f"
+    if [[ -f "$CUSTOM" ]]; then
+        docker cp "$CUSTOM" "$PANGOLIN_CONTAINER:/app/public/logo/$f" 2>/dev/null && \
+            CUSTOM_LOGOS_COPIED=$((CUSTOM_LOGOS_COPIED+1)) || true
+    fi
+done
+[[ $CUSTOM_LOGOS_COPIED -gt 0 ]] && info "  Copied $CUSTOM_LOGOS_COPIED custom logo(s) into container"
+success "Wordmark images ready (originals saved to $BRANDING_DIR/logos/)"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 5: Update Pangolin docker-compose.yml volume mounts
@@ -231,10 +247,11 @@ with open('$COMPOSE_FILE') as f:
 
 branding = '$BRANDING_DIR'
 
-# Read saved hashes
-css_hash    = open(f'{branding}/.css-hash').read().strip()    if os.path.exists(f'{branding}/.css-hash')    else ''
-sidebar_hash = open(f'{branding}/.sidebar-hash').read().strip() if os.path.exists(f'{branding}/.sidebar-hash') else ''
-auth_hash    = open(f'{branding}/.auth-hash').read().strip()    if os.path.exists(f'{branding}/.auth-hash')    else ''
+# Read saved hashes and paths
+css_hash         = open(f'{branding}/.css-hash').read().strip()         if os.path.exists(f'{branding}/.css-hash')         else ''
+sidebar_hash     = open(f'{branding}/.sidebar-hash').read().strip()     if os.path.exists(f'{branding}/.sidebar-hash')     else ''
+auth_hash        = open(f'{branding}/.auth-hash').read().strip()        if os.path.exists(f'{branding}/.auth-hash')        else ''
+auth_chunk_path  = open(f'{branding}/.auth-chunk-path').read().strip()  if os.path.exists(f'{branding}/.auth-chunk-path')  else ''
 
 old = '      - ./config:/app/config'
 new_mounts = '      - ./config:/app/config'
@@ -247,14 +264,13 @@ if css_hash:
 if sidebar_hash and os.path.exists(f'{branding}/sidebar-chunk-active.js'):
     new_mounts += f'\n      - {branding}/sidebar-chunk-active.js:/app/.next/static/chunks/{sidebar_hash}.js:ro'
 
-# Auth resource page chunk (NEW hash)
-if auth_hash and os.path.exists(f'{branding}/auth-resource-page-patched-new.js'):
-    new_mounts += f'\n      - {branding}/auth-resource-page-patched-new.js:/app/.next/static/chunks/pages/auth/resource/page-{auth_hash}.js:ro'
+# Auth resource page chunk (NEW hash) — use ACTUAL container path, not hardcoded one
+if auth_hash and auth_chunk_path and os.path.exists(f'{branding}/auth-resource-page-patched-new.js'):
+    auth_dir = os.path.dirname(auth_chunk_path)
+    new_mounts += f'\n      - {branding}/auth-resource-page-patched-new.js:{auth_dir}/page-{auth_hash}.js:ro'
 
-# Wordmark logos
-new_mounts += f'\n      - {branding}/logos/word_mark_black.png:/app/public/logo/word_mark_black.png:ro'
-new_mounts += f'\n      - {branding}/logos/word_mark_white.png:/app/public/logo/word_mark_white.png:ro'
-new_mounts += f'\n      - {branding}/logos/word_mark.png:/app/public/logo/word_mark.png:ro'
+# NOTE: Wordmark logos are baked into the committed image (Step 4) — no file-level
+# volume mounts needed (file mounts fail on overlay filesystems)
 
 if old in content:
     content = content.replace(old, new_mounts, 1)
@@ -264,6 +280,8 @@ if old in content:
     print(f'  CSS hash: {css_hash}')
     print(f'  Sidebar hash: {sidebar_hash}')
     print(f'  Auth hash: {auth_hash}')
+    if auth_chunk_path:
+        print(f'  Auth chunk dir: {os.path.dirname(auth_chunk_path)}')
 else:
     print('  WARNING: Could not find mount point in docker-compose.yml')
 PYEOF
