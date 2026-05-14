@@ -10,6 +10,7 @@ const PAGE_META = {
   'branding':         { title: 'Branding',            sub: 'Customize your Pangolin organization appearance' },
   'settings':         { title: 'Connection Settings', sub: 'Pangolin API configuration' },
   'mail-relay':       { title: 'Mail Relay',          sub: 'SMTP configuration for Pangolin email notifications' },
+  'account':          { title: 'Account & Security',  sub: 'Password, two-factor authentication' },
 };
 
 let currentPage = 'dashboard';
@@ -45,6 +46,7 @@ function navigate(page) {
   if (page === 'branding')         initBranding();
   if (page === 'settings')         initSettings();
   if (page === 'mail-relay')       initMailRelay();
+  if (page === 'account')          initAccount();
 
   history.pushState({}, '', `${BASE}/${page === 'dashboard' ? '' : page}`);
 }
@@ -687,6 +689,218 @@ async function restartPangolin() {
     btn.disabled = false;
     btn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Apply &amp; Restart Pangolin`;
   }
+}
+
+/* ─── Account & Security ─────────────────────────────────────────────────── */
+async function initAccount() {
+  const page = document.getElementById('page-account');
+  document.getElementById('topbarActions').innerHTML = '';
+  page.innerHTML = `<div style="text-align:center;padding:60px"><div class="spinner"></div></div>`;
+
+  let cfg = {};
+  try { cfg = await api('/api/auth/admin-settings'); } catch (_) {}
+
+  const methodOpts = [
+    { val: 'totp',  label: 'Authenticator App (TOTP)' },
+    { val: 'email', label: 'Email OTP' },
+    { val: 'both',  label: 'Both — choose at login' },
+  ].map(o => `<option value="${o.val}" ${cfg.twofa_method === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
+
+  page.innerHTML = `
+    <div style="max-width:600px">
+
+      <!-- Change Password -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Change Password</h3></div>
+        <div class="card-body">
+          <div id="pwStatus" style="margin-bottom:12px"></div>
+          <div class="form-group">
+            <label class="form-label">Current Password</label>
+            <input class="form-input" type="password" id="pwCurrent" placeholder="Current password">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">New Password</label>
+              <input class="form-input" type="password" id="pwNew" placeholder="Min. 8 characters">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Confirm New Password</label>
+              <input class="form-input" type="password" id="pwConfirm" placeholder="Repeat new password">
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:14px" onclick="changePassword()">
+            Update Password
+          </button>
+        </div>
+      </div>
+
+      <!-- Admin Email (for OTP + forgot password) -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Admin Email</h3></div>
+        <div class="card-body">
+          <div id="emailStatus" style="margin-bottom:12px"></div>
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input class="form-input" type="email" id="adminEmail" value="${escHtml(cfg.admin_email||'')}" placeholder="your@email.com">
+            <div class="form-hint">Used for 2FA email OTP codes and password reset emails.</div>
+          </div>
+          <button class="btn btn-primary" onclick="saveAdminEmail()">Save Email</button>
+        </div>
+      </div>
+
+      <!-- Two-Factor Authentication -->
+      <div class="card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+          <h3>Two-Factor Authentication</h3>
+          <span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;
+            ${cfg.twofa_enabled ? 'background:#dcfce7;color:#16a34a' : 'background:#f1f5f9;color:#64748b'}">
+            ${cfg.twofa_enabled ? 'ENABLED' : 'DISABLED'}
+          </span>
+        </div>
+        <div class="card-body">
+          <div id="twofaStatus" style="margin-bottom:14px"></div>
+
+          <div class="form-group">
+            <label class="form-label">2FA Method</label>
+            <select class="form-select" id="twofaMethod" onchange="saveAdminSettings()">${methodOpts}</select>
+          </div>
+
+          <!-- TOTP Setup -->
+          <div id="totpSetupSection" style="${cfg.twofa_method === 'email' ? 'display:none' : ''}">
+            <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:14px">
+              <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px">
+                Authenticator App Setup
+                ${cfg.totp_confirmed ? '<span style="color:#16a34a;margin-left:8px">✓ Configured</span>' : ''}
+              </div>
+              <div style="font-size:12px;color:#6b7280;margin-bottom:10px">
+                Scan the QR code with Google Authenticator, Authy, or any TOTP app.
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="setupTotp()" id="setupTotpBtn">
+                ${cfg.totp_confirmed ? 'Re-configure Authenticator' : 'Set Up Authenticator App'}
+              </button>
+              <div id="totpQrSection" style="display:none;margin-top:14px">
+                <img id="totpQr" style="border:4px solid white;border-radius:8px;display:block;margin-bottom:12px">
+                <div style="font-size:12px;color:#6b7280;margin-bottom:8px">
+                  Manual key: <code id="totpSecret" style="font-size:11px"></code>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input class="form-input" type="text" id="totpVerifyCode" placeholder="Enter 6-digit code to confirm"
+                    style="max-width:200px;letter-spacing:3px;text-align:center">
+                  <button class="btn btn-primary btn-sm" onclick="confirmTotp()">Confirm &amp; Enable</button>
+                </div>
+                <div id="totpVerifyStatus" style="margin-top:8px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Enable/Disable -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            ${cfg.twofa_enabled
+              ? `<button class="btn btn-secondary" onclick="disable2fa()" style="border-color:#fca5a5;color:#dc2626">Disable 2FA</button>`
+              : `<button class="btn btn-primary" onclick="enable2fa()">Enable 2FA</button>`
+            }
+            <button class="btn btn-secondary btn-sm" onclick="sendTestOtp()">Send Test Email OTP</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function changePassword() {
+  const cur = document.getElementById('pwCurrent').value;
+  const nw  = document.getElementById('pwNew').value;
+  const cnf = document.getElementById('pwConfirm').value;
+  const st  = document.getElementById('pwStatus');
+  st.innerHTML = '';
+  if (nw !== cnf) { st.innerHTML = `<div class="alert alert-error">Passwords do not match</div>`; return; }
+  if (nw.length < 8) { st.innerHTML = `<div class="alert alert-error">Min. 8 characters</div>`; return; }
+  try {
+    await api('/api/auth/change-password', { method: 'POST', body: { current_password: cur, new_password: nw } });
+    st.innerHTML = `<div class="alert alert-success">Password updated successfully</div>`;
+    document.getElementById('pwCurrent').value = '';
+    document.getElementById('pwNew').value = '';
+    document.getElementById('pwConfirm').value = '';
+    showToast('Password changed', 'success');
+  } catch (e) { st.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+async function saveAdminEmail() {
+  const email = document.getElementById('adminEmail').value.trim();
+  const st = document.getElementById('emailStatus');
+  try {
+    await api('/api/auth/admin-settings', { method: 'POST', body: { admin_email: email } });
+    st.innerHTML = `<div class="alert alert-success">Email saved</div>`;
+    showToast('Email saved', 'success');
+  } catch (e) { st.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+async function saveAdminSettings() {
+  const method = document.getElementById('twofaMethod')?.value;
+  const totpSection = document.getElementById('totpSetupSection');
+  if (totpSection) totpSection.style.display = method === 'email' ? 'none' : 'block';
+  try { await api('/api/auth/admin-settings', { method: 'POST', body: { twofa_method: method } }); } catch (_) {}
+}
+
+async function setupTotp() {
+  const st = document.getElementById('twofaStatus');
+  st.innerHTML = `<div class="alert alert-info">Generating QR code…</div>`;
+  try {
+    const r = await api('/api/auth/2fa/setup-totp', { method: 'POST' });
+    st.innerHTML = '';
+    document.getElementById('totpQr').src = r.qr;
+    document.getElementById('totpSecret').textContent = r.secret;
+    document.getElementById('totpQrSection').style.display = 'block';
+    document.getElementById('totpVerifyCode').focus();
+  } catch (e) { st.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+async function confirmTotp() {
+  const code = document.getElementById('totpVerifyCode').value.trim();
+  const st = document.getElementById('totpVerifyStatus');
+  if (!code) { st.innerHTML = `<div class="alert alert-error">Enter the code from your app</div>`; return; }
+  try {
+    const r = await api('/api/auth/2fa/confirm-totp', { method: 'POST', body: { code } });
+    st.innerHTML = `<div class="alert alert-success">${r.message}</div>`;
+    showToast('TOTP 2FA enabled!', 'success');
+    setTimeout(() => initAccount(), 1500);
+  } catch (e) { st.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+async function enable2fa() {
+  const method = document.getElementById('twofaMethod')?.value || 'totp';
+  if (method === 'totp' || method === 'both') {
+    const st = document.getElementById('twofaStatus');
+    st.innerHTML = `<div class="alert alert-info">Scan the QR code to enable TOTP 2FA</div>`;
+    await setupTotp();
+  } else {
+    try {
+      await api('/api/auth/admin-settings', { method: 'POST', body: { twofa_method: 'email' } });
+      // Enable by setting flag — email OTP doesn't need setup
+      document.getElementById('twofaStatus').innerHTML =
+        `<div class="alert alert-success">Email OTP 2FA enabled. Send a test email to verify.</div>`;
+      setTimeout(() => initAccount(), 1500);
+    } catch (e) {
+      document.getElementById('twofaStatus').innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    }
+  }
+}
+
+async function disable2fa() {
+  if (!confirm('Are you sure you want to disable 2FA?')) return;
+  try {
+    const r = await api('/api/auth/2fa/disable', { method: 'POST' });
+    showToast(r.message, 'success');
+    setTimeout(() => initAccount(), 800);
+  } catch (e) { document.getElementById('twofaStatus').innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+async function sendTestOtp() {
+  const st = document.getElementById('twofaStatus');
+  try {
+    const r = await api('/api/auth/2fa/send-test-otp', { method: 'POST' });
+    st.innerHTML = `<div class="alert alert-success">${r.message}</div>`;
+    showToast('OTP sent!', 'success');
+  } catch (e) { st.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
 }
 
 /* ─── Boot ──────────────────────────────────────────────────────────────── */

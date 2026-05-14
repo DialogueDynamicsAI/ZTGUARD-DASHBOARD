@@ -65,6 +65,27 @@ db.exec(`
     value TEXT NOT NULL DEFAULT ''
   );
 
+  CREATE TABLE IF NOT EXISTS admin_config (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS admin_reset_tokens (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS admin_otp_codes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    code_hash  TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS mail_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     source      TEXT    NOT NULL DEFAULT 'ztguard',
@@ -255,6 +276,21 @@ const insertMail = db.prepare(
 );
 for (const [key, value] of MAIL_DEFAULTS) {
   insertMail.run(key, value);
+}
+
+// Seed admin config defaults
+const ADMIN_CONFIG_DEFAULTS = [
+  ['admin_email',    ''],
+  ['twofa_enabled',  '0'],
+  ['twofa_method',   'totp'],   // 'totp' | 'email' | 'both'
+  ['totp_secret',    ''],
+  ['totp_confirmed', '0'],
+];
+const insertAdminCfg = db.prepare(
+  `INSERT OR IGNORE INTO admin_config (key, value) VALUES (?, ?)`
+);
+for (const [key, value] of ADMIN_CONFIG_DEFAULTS) {
+  insertAdminCfg.run(key, value);
 }
 
 module.exports = db;

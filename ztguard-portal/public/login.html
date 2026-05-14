@@ -140,6 +140,39 @@ input[type="password"]:focus {
   text-align: center; margin-top: 20px;
   font-size: 12px; color: rgba(255,255,255,0.25);
 }
+.link-btn {
+  background: none; border: none; cursor: pointer;
+  color: rgba(255,255,255,0.4); font-size: 13px; font-family: inherit;
+  margin-top: 14px; width: 100%; text-align: center;
+  transition: color 0.2s;
+}
+.link-btn:hover { color: rgba(255,255,255,0.7); }
+input[type="text"] {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 15px; font-family: inherit;
+  color: #fff; outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  letter-spacing: 4px; text-align: center;
+}
+input[type="text"]:focus {
+  border-color: var(--blue2);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.success-msg {
+  margin-top: 16px;
+  background: rgba(16,185,129,0.12);
+  border: 1px solid rgba(16,185,129,0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px; color: #6ee7b7;
+  display: none;
+}
+.success-msg.show { display: block; }
+.twofa-hint { font-size:12px;color:rgba(255,255,255,0.35);margin-top:6px;text-align:center; }
 </style>
 </head>
 <body>
@@ -151,60 +184,173 @@ input[type="password"]:focus {
     </div>
   </div>
 
+  <!-- ── Sign In ── -->
   <div class="login-card" id="loginCard">
-    <div class="card-title">Extended Settings</div>
-    <div class="card-sub">Sign in to access enterprise features</div>
+    <div class="card-title" id="loginTitle">Extended Settings</div>
+    <div class="card-sub" id="loginSub">Sign in to access enterprise features</div>
 
     <form id="loginForm" autocomplete="off">
       <label for="password">Admin Password</label>
       <input type="password" id="password" name="password"
              placeholder="Enter admin password" autofocus required>
-
       <button type="submit" class="btn-signin" id="signInBtn">Sign In</button>
     </form>
 
-    <div class="error-msg" id="errorMsg">Incorrect password. Please try again.</div>
+    <!-- 2FA step (hidden initially) -->
+    <div id="twofaSection" style="display:none">
+      <label id="twofaLabel">Authenticator Code</label>
+      <input type="text" id="twofaCode" placeholder="000000" maxlength="6" autocomplete="one-time-code">
+      <div class="twofa-hint" id="twofaHint"></div>
+      <button class="btn-signin" id="twofaBtn" onclick="verify2fa()">Verify</button>
+      <button class="link-btn" onclick="switchTwofaMethod()">
+        Use <span id="switchLabel">email code</span> instead
+      </button>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+    <div class="success-msg" id="successMsg"></div>
+
+    <button class="link-btn" id="forgotBtn" onclick="showForgotPassword()">Forgot password?</button>
+  </div>
+
+  <!-- ── Forgot Password ── -->
+  <div class="login-card" id="forgotCard" style="display:none">
+    <div class="card-title">Reset Password</div>
+    <div class="card-sub">We'll email you a reset link</div>
+    <div class="error-msg" id="forgotError"></div>
+    <div class="success-msg" id="forgotSuccess"></div>
+    <button class="btn-signin" id="forgotSendBtn" onclick="sendForgotEmail()" style="margin-top:0">
+      Send Reset Link
+    </button>
+    <button class="link-btn" onclick="showLogin()">← Back to sign in</button>
   </div>
 
   <div class="footer-note">ZTGuard Extended Settings Portal</div>
 </div>
 
 <script>
-const BASE = (document.currentScript && document.currentScript.dataset.base) || '/ztguard';
+const BASE = '/ztguard';
+let pendingTwofaMethod = 'totp';
 
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.classList.add('show');
+}
+function clearMsg(id) { document.getElementById(id).classList.remove('show'); }
+
+// ── Sign In ──────────────────────────────────────────────────────────────────
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('signInBtn');
-  const err = document.getElementById('errorMsg');
-  const card = document.getElementById('loginCard');
   const pw = document.getElementById('password').value;
-
-  btn.disabled = true;
-  btn.textContent = 'Signing in…';
-  err.classList.remove('show');
+  clearMsg('errorMsg'); clearMsg('successMsg');
+  btn.disabled = true; btn.textContent = 'Signing in…';
 
   try {
-    const resp = await fetch('/ztguard/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const resp = await fetch(BASE + '/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pw }),
     });
     const data = await resp.json();
-    if (resp.ok && data.ok) {
-      window.location.href = data.redirect || '/ztguard/';
+    if (data.ok) {
+      window.location.href = data.redirect || BASE + '/';
+    } else if (data.twofa_required) {
+      pendingTwofaMethod = data.method;
+      show2faStep(data.method, data.message);
     } else {
-      err.classList.add('show');
+      showError('errorMsg', data.error || 'Incorrect password.');
+      const card = document.getElementById('loginCard');
       card.classList.add('card-shake');
       setTimeout(() => card.classList.remove('card-shake'), 500);
       document.getElementById('password').value = '';
       document.getElementById('password').focus();
     }
   } catch (_) {
-    err.textContent = 'Connection error. Please try again.';
-    err.classList.add('show');
+    showError('errorMsg', 'Connection error. Please try again.');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Sign In';
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+});
+
+function show2faStep(method, hint) {
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('forgotBtn').style.display = 'none';
+  document.getElementById('twofaSection').style.display = 'block';
+  document.getElementById('twofaLabel').textContent =
+    method === 'email' ? 'Email OTP Code' : 'Authenticator Code';
+  document.getElementById('twofaHint').textContent = hint || '';
+  const switchLabel = document.getElementById('switchLabel');
+  if (switchLabel) switchLabel.textContent = method === 'totp' ? 'email code' : 'authenticator code';
+  document.getElementById('twofaCode').focus();
+}
+
+async function verify2fa() {
+  const code = document.getElementById('twofaCode').value.trim();
+  const btn = document.getElementById('twofaBtn');
+  clearMsg('errorMsg');
+  if (!code) { showError('errorMsg', 'Enter the 6-digit code'); return; }
+  btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const resp = await fetch(BASE + '/login/verify-2fa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, method: pendingTwofaMethod }),
+    });
+    const data = await resp.json();
+    if (data.ok) { window.location.href = data.redirect || BASE + '/'; }
+    else {
+      showError('errorMsg', data.error || 'Invalid code');
+      document.getElementById('twofaCode').value = '';
+      document.getElementById('twofaCode').focus();
+    }
+  } catch (_) { showError('errorMsg', 'Connection error'); }
+  finally { btn.disabled = false; btn.textContent = 'Verify'; }
+}
+
+function switchTwofaMethod() {
+  pendingTwofaMethod = pendingTwofaMethod === 'totp' ? 'email' : 'totp';
+  const label = document.getElementById('twofaLabel');
+  const hint = document.getElementById('twofaHint');
+  const switchLabel = document.getElementById('switchLabel');
+  if (pendingTwofaMethod === 'email') {
+    label.textContent = 'Email OTP Code';
+    hint.textContent = 'Check your email for a 6-digit code';
+    if (switchLabel) switchLabel.textContent = 'authenticator code';
+  } else {
+    label.textContent = 'Authenticator Code';
+    hint.textContent = 'Enter the code from your authenticator app';
+    if (switchLabel) switchLabel.textContent = 'email code';
+  }
+}
+
+// ── Forgot Password ──────────────────────────────────────────────────────────
+function showForgotPassword() {
+  document.getElementById('loginCard').style.display = 'none';
+  document.getElementById('forgotCard').style.display = 'block';
+}
+function showLogin() {
+  document.getElementById('forgotCard').style.display = 'none';
+  document.getElementById('loginCard').style.display = 'block';
+}
+
+async function sendForgotEmail() {
+  const btn = document.getElementById('forgotSendBtn');
+  clearMsg('forgotError'); clearMsg('forgotSuccess');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const resp = await fetch(BASE + '/forgot-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    const data = await resp.json();
+    document.getElementById('forgotSuccess').textContent = data.message || 'Reset link sent.';
+    document.getElementById('forgotSuccess').classList.add('show');
+  } catch (_) { showError('forgotError', 'Connection error'); }
+  finally { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
+}
+
+// Allow Enter key in 2FA input
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('twofaSection').style.display !== 'none') {
+    verify2fa();
   }
 });
 </script>
