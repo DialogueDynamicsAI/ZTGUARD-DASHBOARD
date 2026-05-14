@@ -23,10 +23,34 @@ function setConfig(key, value) {
 }
 
 function applyConfig(cfg) {
-  if (cfg.pangolin_url)     process.env.PANGOLIN_API_URL = cfg.pangolin_url.replace(/\/$/, '') + '/v1';
+  // Use direct Docker internal URL for API polling (avoids hairpin NAT issues)
+  // pangolin:3003 is the integration API accessible from within the Docker network
+  if (cfg.pangolin_url) {
+    const directUrl = 'http://pangolin:3003';
+    const publicUrl = cfg.pangolin_url.replace(/\/$/, '') + '/v1';
+    process.env.PANGOLIN_API_URL = directUrl;
+    process.env.PANGOLIN_API_URL_PUBLIC = publicUrl;
+  }
   if (cfg.pangolin_org_id)  process.env.PANGOLIN_ORG_ID  = cfg.pangolin_org_id;
   if (cfg.pangolin_api_key) process.env.PANGOLIN_API_KEY  = cfg.pangolin_api_key;
   if (cfg.poll_interval)    process.env.POLL_INTERVAL_SECONDS = cfg.poll_interval;
+}
+
+// Try internal Docker URL first, fall back to public HTTPS (handles hairpin NAT)
+async function fetchWithFallback(path, options, publicBase) {
+  const internalUrl = `http://pangolin:3003${path}`;
+  const publicUrl   = publicBase ? `${publicBase}${path}` : null;
+  try {
+    const r = await fetch(internalUrl, { ...options, timeout: 5000 });
+    if (r.ok || r.status === 401 || r.status === 403) return { response: r, url: internalUrl };
+  } catch (_) {}
+  if (publicUrl) {
+    const https = require('https');
+    const agent = new https.Agent({ rejectUnauthorized: false });
+    const r = await fetch(publicUrl, { ...options, agent, timeout: 8000 });
+    return { response: r, url: publicUrl };
+  }
+  throw new Error('Could not reach Pangolin API (internal or public URL)');
 }
 
 // GET /api/connection — return current settings (key masked)
@@ -204,15 +228,13 @@ router.post('/test', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Server URL and API key are required' });
   }
 
-  const apiBase = cfg.pangolin_url.replace(/\/$/, '') + '/v1';
+  const publicBase = cfg.pangolin_url.replace(/\/$/, '') + '/v1';
   const orgId = cfg.pangolin_org_id;
+  const headers = { Authorization: `Bearer ${cfg.pangolin_api_key}` };
 
   try {
     const start = Date.now();
-    const resp = await fetch(`${apiBase}/org/${orgId}`, {
-      headers: { Authorization: `Bearer ${cfg.pangolin_api_key}` },
-      timeout: 10000,
-    });
+    const { response: resp, url } = await fetchWithFallback(`/v1/org/${orgId}`, { headers }, publicBase);
     const latency = Date.now() - start;
 
     if (resp.status === 401) return res.json({ ok: false, error: 'API key rejected (401)', latency });
@@ -221,7 +243,8 @@ router.post('/test', async (req, res) => {
 
     const data = await resp.json();
     const orgName = data.data?.org?.name || data.org?.name || orgId;
-    res.json({ ok: true, org_name: orgName, latency, message: `Connected to org "${orgName}" in ${latency}ms` });
+    const via = url.includes('pangolin:3003') ? 'internal' : 'public';
+    res.json({ ok: true, org_name: orgName, latency, message: `Connected to org "${orgName}" in ${latency}ms (via ${via})` });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
