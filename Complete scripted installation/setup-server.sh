@@ -55,23 +55,13 @@ if [[ -z "$ADMIN_PASSWORD" ]]; then
     warn "Generated admin password: ${BOLD}${ADMIN_PASSWORD}${NC}  (save this!)"
 fi
 
-# Auto-suggest org ID from domain first subdomain
-AUTO_ORG_ID=$(echo "$DOMAIN" | cut -d. -f1 | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
-read -rp "  Organization name [${DOMAIN}]: " ORG_NAME < /dev/tty
-ORG_NAME="${ORG_NAME:-${DOMAIN}}"
-
-read -rp "  Organization ID (short, no spaces) [${AUTO_ORG_ID}]: " ORG_ID < /dev/tty
-ORG_ID="${ORG_ID:-${AUTO_ORG_ID}}"
-ORG_ID=$(echo "$ORG_ID" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
-
 SERVER_SECRET=$(openssl rand -base64 32 | tr -d '+/=')
 
 echo ""
 echo "  ─────────────────────────────────────────────────"
-echo "  Domain:  $DOMAIN"
+echo "  Domain:   $DOMAIN"
 echo "  LE Email: $LE_EMAIL"
-echo "  Admin:   $ADMIN_EMAIL"
-echo "  Org:     $ORG_NAME ($ORG_ID)"
+echo "  Admin:    $ADMIN_EMAIL"
 echo "  ─────────────────────────────────────────────────"
 read -rp "  Continue? [Y/n]: " confirm < /dev/tty
 [[ "${confirm,,}" != "n" ]] || { info "Aborted."; exit 0; }
@@ -342,52 +332,15 @@ if [[ "$STATUS" != "healthy" ]]; then
 fi
 success "Pangolin stack is running"
 
-# ── Create Pangolin admin account and org ─────────────────────────────────────
-step "Creating Pangolin admin account and organization..."
+# ── Create Pangolin admin account ────────────────────────────────────────────
+step "Creating Pangolin admin account..."
 sleep 3
 
-# Use CLI to set admin credentials
 docker exec pangolin node /app/dist/cli.mjs set-admin-credentials \
     --email "${ADMIN_EMAIL}" \
     --password "${ADMIN_PASSWORD}" 2>/dev/null && \
     success "Admin account created: ${ADMIN_EMAIL}" || \
-    warn "Could not auto-create admin — complete setup at https://${DOMAIN}/auth/initial-setup"
-
-# Create org via Node.js
-cat > /tmp/ztguard_org_setup.cjs << 'JSEOF'
-const Database = require('/app/node_modules/better-sqlite3');
-const db = new Database('/app/config/db/db.sqlite');
-const now = new Date().toISOString();
-
-try {
-  db.prepare("INSERT OR IGNORE INTO orgs (orgId, name, subnet, utilitySubnet, createdAt) VALUES (?, ?, ?, ?, ?)")
-    .run(process.env.ORG_ID, process.env.ORG_NAME, '100.90.128.0/20', '100.96.128.0/20', now);
-
-  const user = db.prepare("SELECT * FROM user WHERE serverAdmin = 1 LIMIT 1").get();
-  if (user) {
-    db.prepare("INSERT OR IGNORE INTO userOrgs (userId, orgId, isOwner) VALUES (?, ?, 1)").run(user.userId, process.env.ORG_ID);
-  }
-
-  db.prepare("INSERT OR IGNORE INTO domains (domainId, baseDomain, configManaged, type, verified, failed, tries, certResolver) VALUES (?, ?, 1, 'wildcard', 1, 0, 0, 'letsencrypt')")
-    .run('domain1', process.env.BASE_DOMAIN);
-  db.prepare("INSERT OR IGNORE INTO orgDomains (orgId, domainId) VALUES (?, 'domain1')").run(process.env.ORG_ID);
-
-  console.log('ORG_CREATED=1');
-} catch(e) {
-  console.log('ORG_CREATED=0');
-  console.error(e.message);
-}
-db.close();
-JSEOF
-
-BASE_DOMAIN=$(echo "$DOMAIN" | cut -d. -f2-)
-docker cp /tmp/ztguard_org_setup.cjs pangolin:/app/ztguard_org_setup.cjs
-ORG_ID="$ORG_ID" ORG_NAME="$ORG_NAME" BASE_DOMAIN="$BASE_DOMAIN" \
-    docker exec -e ORG_ID -e ORG_NAME -e BASE_DOMAIN pangolin node /app/ztguard_org_setup.cjs 2>/dev/null | grep -q "ORG_CREATED=1" && \
-    success "Organization '${ORG_NAME}' (${ORG_ID}) created" || \
-    warn "Org setup had warnings — may need manual setup"
-docker exec pangolin rm -f /app/ztguard_org_setup.cjs
-rm -f /tmp/ztguard_org_setup.cjs
+    warn "Could not auto-create admin — use the setup token below at https://${DOMAIN}/auth/initial-setup"
 
 # ── Get setup token ───────────────────────────────────────────────────────────
 SETUP_TOKEN=$(docker exec pangolin node -e "
@@ -413,9 +366,9 @@ ZTGuard Server Setup — $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Domain:         ${DOMAIN}
 Admin Email:    ${ADMIN_EMAIL}
 Admin Password: ${ADMIN_PASSWORD}
-Org Name:       ${ORG_NAME}
-Org ID:         ${ORG_ID}
-Setup Token:    ${SETUP_TOKEN:-"(already used — check /auth/initial-setup)"}
+Setup Token:    ${SETUP_TOKEN:-"(not needed — admin already created)"}
+Dashboard:      https://${DOMAIN}
+Setup URL:      https://${DOMAIN}/auth/initial-setup
 EOF
 chmod 600 "$PANGOLIN_DIR/ztguard-setup-info.txt"
 
@@ -425,17 +378,19 @@ echo -e "${GREEN}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════════════╗"
 echo "  ║   Pangolin is ready!                                        ║"
 echo "  ╠══════════════════════════════════════════════════════════════╣"
-echo -e "  ║  ${NC}${BOLD} Admin:${NC}   ${ADMIN_EMAIL}"
+echo -e "  ║  ${NC}${BOLD} Admin:${NC}    ${ADMIN_EMAIL}"
 echo -e "  ║  ${NC}${BOLD} Password:${NC} ${ADMIN_PASSWORD}"
-echo -e "  ║  ${NC}${BOLD} Org:${NC}     ${ORG_NAME} (${ORG_ID})"
+echo -e "  ║  ${NC}${BOLD} URL:${NC}      https://${DOMAIN}"
+echo "  ╠══════════════════════════════════════════════════════════════╣"
+echo "  ║   Log in and create your Organization when prompted.       ║"
 if [[ -n "$SETUP_TOKEN" ]]; then
 echo "  ╠══════════════════════════════════════════════════════════════╣"
-echo -e "  ║  ${NC}${YELLOW}${BOLD} Setup token (if needed):${NC}"
+echo -e "  ║  ${NC}${YELLOW} Setup token (if login fails):${NC}"
 echo -e "  ║   ${SETUP_TOKEN}"
-echo -e "  ║  ${NC} https://${DOMAIN}/auth/initial-setup"
+echo -e "  ║   https://${DOMAIN}/auth/initial-setup"
 fi
 echo "  ╠══════════════════════════════════════════════════════════════╣"
-echo "  ║   Next: Install ZTGuard Dashboard                          ║"
+echo "  ║   After creating your org, install ZTGuard:                ║"
 echo "  ╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo "  Run this command to install the ZTGuard dashboard:"
