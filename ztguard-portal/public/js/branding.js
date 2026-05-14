@@ -4,12 +4,17 @@ let brandingConfig = {};
 let newLogoData = null;
 let activeTab = 'identity';
 
+let _pangolinBaseUrl = '';
+
 async function initBranding() {
   const page = document.getElementById('page-branding');
   document.getElementById('topbarActions').innerHTML = '';
   page.innerHTML = `<div style="text-align:center;padding:60px"><div class="spinner"></div></div>`;
   try {
-    brandingConfig = await api('/api/branding');
+    [brandingConfig] = await Promise.all([
+      api('/api/branding'),
+      api('/api/connection').then(c => { _pangolinBaseUrl = (c.pangolin_url || '').replace(/\/$/, ''); }).catch(() => {}),
+    ]);
     renderBrandingPage();
   } catch (err) {
     page.innerHTML = `<div class="alert alert-error">Failed to load branding config: ${err.message}</div>`;
@@ -268,11 +273,11 @@ button.primary { border-radius: 8px; }"
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                   Open Resource Auth Page
                 </a>
-                <a href="https://ztna.ztguard.net/auth/login" target="_blank" class="btn btn-secondary btn-sm">
+                <a href="${_pangolinBaseUrl}/auth/login" target="_blank" class="btn btn-secondary btn-sm">
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                   Open Pangolin Login
                 </a>
-                <a href="https://ztna.ztguard.net" target="_blank" class="btn btn-secondary btn-sm">
+                <a href="${_pangolinBaseUrl}" target="_blank" class="btn btn-secondary btn-sm">
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                   Pangolin Dashboard
                 </a>

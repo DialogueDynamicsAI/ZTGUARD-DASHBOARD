@@ -2,7 +2,9 @@ const fetch = require('node-fetch');
 const db = require('./db');
 const { forwardEvents } = require('./forwarder');
 
-const LOG_TYPES = ['request', 'action', 'access', 'connection'];
+// Pangolin integration API only exposes 'request' logs via API key auth.
+// connection/access/action logs are read directly from Pangolin's SQLite DB (activity.js).
+const LOG_TYPES = ['request'];
 
 async function pollLogTypeForOrg(orgId, logType, apiUrl, apiKey) {
   const cursor = db.prepare(
@@ -63,13 +65,11 @@ async function pollAll() {
     `SELECT DISTINCT org_id FROM destinations WHERE active = 1`
   ).all().map(r => r.org_id);
 
-  // Also always include the default org (configured via env) for cursor seeding
-  const defaultOrg = process.env.PANGOLIN_ORG_ID;
-  if (defaultOrg && !orgsWithDests.includes(defaultOrg)) {
-    orgsWithDests.push(defaultOrg);
+  // Only poll orgs that have active event streaming destinations configured
+  if (orgsWithDests.length === 0) {
+    // No destinations configured — nothing to forward, skip polling
+    return;
   }
-
-  if (orgsWithDests.length === 0) return;
 
   for (const orgId of orgsWithDests) {
     for (const logType of LOG_TYPES) {
