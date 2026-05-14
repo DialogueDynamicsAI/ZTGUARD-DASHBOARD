@@ -1024,17 +1024,12 @@ async function initSecurity() {
                   Saves to <code>config.yml</code> and restarts Pangolin (~10s downtime).
                 </div>
               </div>
-              <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-top:2px">
-                <input type="checkbox" id="signupToggle" ${signupDisabled ? 'checked' : ''} ${configMissing ? 'disabled' : ''}
-                  style="opacity:0;width:0;height:0;position:absolute"
-                  onchange="updateSignupToggleVisual()">
-                <span id="signupToggleTrack"
-                  style="position:absolute;inset:0;border-radius:24px;cursor:${configMissing ? 'not-allowed' : 'pointer'};transition:background .2s;
-                    background:${signupDisabled ? '#2563eb' : '#d1d5db'}"></span>
-                <span id="signupToggleThumb"
-                  style="position:absolute;left:${signupDisabled ? '22px' : '2px'};top:2px;width:20px;height:20px;background:white;border-radius:50%;
-                    box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left .2s;cursor:${configMissing ? 'not-allowed' : 'pointer'}"></span>
-              </label>
+              <div id="signupToggle" data-checked="${signupDisabled ? '1' : '0'}"
+                onclick="${configMissing ? '' : 'toggleSignup()'}"
+                style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-top:2px;cursor:${configMissing ? 'not-allowed' : 'pointer'}">
+                <div style="position:absolute;inset:0;border-radius:24px;background:${signupDisabled ? '#2563eb' : '#d1d5db'};transition:background .2s" id="signupTrack"></div>
+                <div style="position:absolute;left:${signupDisabled ? '22px' : '2px'};top:2px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left .2s" id="signupThumb"></div>
+              </div>
             </div>
             <div id="signupToggleState" style="margin-top:12px;font-size:12px;font-weight:600;${signupDisabled ? 'color:#16a34a' : 'color:#6b7280'}">
               ${signupDisabled ? '● Signup is DISABLED — users must be invited' : '○ Signup is ENABLED — anyone can self-register'}
@@ -1055,29 +1050,30 @@ async function initSecurity() {
     </div>`;
 }
 
-function updateSignupToggleVisual() {
-  const checkbox = document.getElementById('signupToggle');
-  const track    = document.getElementById('signupToggleTrack');
-  const thumb    = document.getElementById('signupToggleThumb');
-  const state    = document.getElementById('signupToggleState');
-  if (!checkbox) return;
-  const checked = checkbox.checked;
-  if (track) track.style.background = checked ? '#2563eb' : '#d1d5db';
-  if (thumb) thumb.style.left = checked ? '22px' : '2px';
+function toggleSignup() {
+  const toggle = document.getElementById('signupToggle');
+  const track  = document.getElementById('signupTrack');
+  const thumb  = document.getElementById('signupThumb');
+  const state  = document.getElementById('signupToggleState');
+  if (!toggle) return;
+  const nowChecked = toggle.dataset.checked !== '1';
+  toggle.dataset.checked = nowChecked ? '1' : '0';
+  if (track) track.style.background = nowChecked ? '#2563eb' : '#d1d5db';
+  if (thumb) thumb.style.left = nowChecked ? '22px' : '2px';
   if (state) {
-    state.textContent = checked
+    state.textContent = nowChecked
       ? '● Signup is DISABLED — users must be invited'
       : '○ Signup is ENABLED — anyone can self-register';
-    state.style.color = checked ? '#16a34a' : '#6b7280';
+    state.style.color = nowChecked ? '#16a34a' : '#6b7280';
   }
 }
 
 async function saveSecuritySettings() {
-  const checkbox = document.getElementById('signupToggle');
+  const toggle   = document.getElementById('signupToggle');
   const statusEl = document.getElementById('securityStatus');
-  if (!checkbox) return;
+  if (!toggle) return;
 
-  const disable = checkbox.checked;
+  const disable = toggle.dataset.checked === '1';
   statusEl.innerHTML = `<div class="alert alert-info">Saving and restarting Pangolin…</div>`;
 
   try {
