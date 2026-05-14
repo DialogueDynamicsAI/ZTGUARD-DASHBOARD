@@ -367,17 +367,111 @@ PYEOF
     fi
 fi
 
-# ── Restart Pangolin to apply patches ─────────────────────────────────────────
-step "Restarting Pangolin to apply branding patches..."
+# ── Restart Pangolin to apply patches + integration API ───────────────────────
+step "Restarting Pangolin..."
 cd "$PANGOLIN_DIR"
 docker compose up -d pangolin 2>&1 | tail -3
 success "Pangolin restarted"
-sleep 5
+
+# Wait for Pangolin to be healthy before creating API key
+info "Waiting for Pangolin to be ready..."
+for i in $(seq 1 30); do
+    STATUS=$(docker inspect pangolin --format '{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+    [[ "$STATUS" == "healthy" ]] && break
+    sleep 2
+done
+
+# ── Auto-create Pangolin API key and detect org ────────────────────────────────
+step "Connecting ZTGuard to Pangolin..."
+PANGOLIN_API_KEY=""
+PANGOLIN_ORG_ID=""
+
+# Write key-creation script to temp file inside the container
+KEYGEN_SCRIPT="/tmp/ztguard_keygen_$$.mjs"
+docker exec pangolin sh -c "cat > $KEYGEN_SCRIPT" << 'JSEOF'
+import { createRequire } from 'module';
+import { randomBytes } from 'crypto';
+import { hash } from '/app/node_modules/@node-rs/argon2/index.js';
+const require = createRequire(import.meta.url);
+const Database = require('/app/node_modules/better-sqlite3');
+
+const db = new Database('/app/config/db/db.sqlite');
+const keyId = 'ztguard-portal';
+const rawToken = 'ztg_' + randomBytes(24).toString('hex');
+const now = new Date().toISOString();
+
+// Get first org
+const org = db.prepare("SELECT orgId FROM orgs LIMIT 1").get();
+const orgId = org ? org.orgId : null;
+
+if (!orgId) {
+  console.log('NO_ORG');
+  db.close();
+  process.exit(0);
+}
+
+// Create/replace API key
+const keyHash = await hash(rawToken);
+db.prepare("DELETE FROM apiKeys WHERE apiKeyId = ?").run(keyId);
+db.prepare("DELETE FROM apiKeyOrg WHERE apiKeyId = ?").run(keyId);
+db.prepare("DELETE FROM apiKeyActions WHERE apiKeyId = ?").run(keyId);
+
+db.prepare("INSERT INTO apiKeys (apiKeyId, name, apiKeyHash, lastChars, dateCreated, isRoot) VALUES (?, ?, ?, ?, ?, 1)")
+  .run(keyId, 'ztguard-portal', keyHash, rawToken.slice(-4), now);
+
+try { db.prepare("INSERT OR IGNORE INTO apiKeyOrg (apiKeyId, orgId) VALUES (?, ?)").run(keyId, orgId); } catch(e) {}
+
+const actions = db.prepare("SELECT actionId FROM actions").all();
+for (const a of actions) {
+  try { db.prepare("INSERT OR IGNORE INTO apiKeyActions (apiKeyId, actionId) VALUES (?, ?)").run(keyId, a.actionId); } catch(e) {}
+}
+
+console.log('KEY=' + keyId + '.' + rawToken);
+console.log('ORG=' + orgId);
+db.close();
+JSEOF
+
+# Execute the script inside the Pangolin container
+KEYGEN_OUTPUT=$(docker exec pangolin node "$KEYGEN_SCRIPT" 2>/dev/null || echo "")
+docker exec pangolin rm -f "$KEYGEN_SCRIPT" 2>/dev/null || true
+
+if echo "$KEYGEN_OUTPUT" | grep -q "^KEY="; then
+    PANGOLIN_API_KEY=$(echo "$KEYGEN_OUTPUT" | grep "^KEY=" | cut -d= -f2-)
+    PANGOLIN_ORG_ID=$(echo "$KEYGEN_OUTPUT" | grep "^ORG=" | cut -d= -f2)
+    success "API key created for org: $PANGOLIN_ORG_ID"
+elif echo "$KEYGEN_OUTPUT" | grep -q "NO_ORG"; then
+    warn "No Pangolin org found — connection settings need manual setup after install"
+else
+    warn "Could not auto-create API key — configure Connection Settings manually in the portal"
+fi
 
 # ── Build and start ZTGuard portal ────────────────────────────────────────────
 step "Starting ZTGuard portal..."
 cd "$INSTALL_DIR"
 docker compose up -d --build 2>&1 | tail -5
+
+# ── Pre-configure ZTGuard connection settings (if API key was created) ─────────
+if [[ -n "$PANGOLIN_API_KEY" && -n "$PANGOLIN_ORG_ID" ]]; then
+    info "Pre-configuring ZTGuard connection to Pangolin..."
+    # Wait a moment for the DB to initialize
+    sleep 4
+    docker exec ztguard-portal node -e "
+const Database = require('/app/node_modules/better-sqlite3');
+const db = new Database('/app/data/state.db');
+const set = (k, v) => db.prepare('INSERT INTO app_config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, v);
+set('pangolin_url',     'https://${PANGOLIN_DOMAIN}');
+set('pangolin_api_key', '${PANGOLIN_API_KEY}');
+set('pangolin_org_id',  '${PANGOLIN_ORG_ID}');
+set('poll_interval',    '30');
+console.log('Connection pre-configured');
+db.close();
+" 2>/dev/null && success "ZTGuard pre-connected to Pangolin (org: $PANGOLIN_ORG_ID)" || \
+    warn "Pre-configuration skipped — set up manually in portal Connection Settings"
+
+    # Restart portal so it picks up the new DB config
+    docker restart ztguard-portal 2>/dev/null || true
+    sleep 3
+fi
 
 # Wait for startup — portal is only accessible via Traefik (not on localhost directly)
 info "Waiting for portal to start (checking via Traefik)..."
@@ -403,6 +497,7 @@ PANGOLIN_DIR=$PANGOLIN_DIR
 PANGOLIN_DOMAIN=$PANGOLIN_DOMAIN
 DOCKER_NETWORK=$DOCKER_NETWORK
 ZTGUARD_VERSION=$ZTGUARD_VERSION
+PANGOLIN_ORG_ID=${PANGOLIN_ORG_ID}
 EOF
 
 # ── Success banner ─────────────────────────────────────────────────────────────
@@ -413,12 +508,14 @@ echo "  ║   ZTGuard Dashboard installed successfully!                 ║"
 echo "  ╠══════════════════════════════════════════════════════════════╣"
 echo -e "  ║   ${NC}${BOLD}Portal URL:${NC}  https://${PANGOLIN_DOMAIN}/ztguard"
 echo -e "  ║   ${NC}${BOLD}Password:${NC}    ${ADMIN_PASSWORD}"
+if [[ -n "$PANGOLIN_ORG_ID" ]]; then
+echo -e "  ║   ${NC}${GREEN}✓ Auto-connected to Pangolin (org: ${PANGOLIN_ORG_ID})${NC}"
+fi
 echo "  ╠══════════════════════════════════════════════════════════════╣"
-echo "  ║   Next steps:                                               ║"
-echo "  ║   1. Open the portal URL above                              ║"
-echo "  ║   2. Go to Connection Settings                              ║"
-echo "  ║   3. Enter your Pangolin admin email + password             ║"
-echo "  ║   4. Click 'Auto-Discover' to connect                       ║"
+echo "  ║   Open the portal and log in — it is ready to use!         ║"
+if [[ -z "$PANGOLIN_ORG_ID" ]]; then
+echo "  ║   Note: Set up Connection Settings after first login        ║"
+fi
 echo "  ╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo "  To remove:  bash ${INSTALL_DIR}/uninstall.sh"
