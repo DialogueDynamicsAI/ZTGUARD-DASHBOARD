@@ -232,9 +232,24 @@ async function discoverConnection() {
 
     resultEl.innerHTML = `<div class="alert alert-success"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>${r.message}</div>`;
   } catch (err) {
-    resultEl.innerHTML = `<div class="alert alert-error"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>${err.message}</div>`;
+    // If CSRF blocks auto-discover, show clear manual instructions
+    const isManual = err.manual || (err.message && err.message.includes('CSRF'));
+    if (isManual) {
+      resultEl.innerHTML = `
+        <div class="alert alert-info" style="text-align:left">
+          <strong>Generate API Key manually:</strong><br>
+          <ol style="margin:8px 0 0 16px;padding:0;font-size:12px;line-height:1.8">
+            <li>Open Pangolin → <strong>Organization → API Keys</strong></li>
+            <li>Click <strong>Generate API Key</strong></li>
+            <li>Copy the key (format: <code>id.secret</code>)</li>
+            <li>Paste it in the <strong>API Key</strong> field below</li>
+          </ol>
+        </div>`;
+    } else {
+      resultEl.innerHTML = `<div class="alert alert-error"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>${err.message}</div>`;
+    }
   } finally {
-    btn.disabled = false; btn.innerHTML = '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> Auto-Discover Orgs & Create API Key';
+    btn.disabled = false; btn.innerHTML = '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> Auto-Discover Orgs &amp; Create API Key';
   }
 }
 

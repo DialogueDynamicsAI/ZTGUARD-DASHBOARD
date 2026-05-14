@@ -70,31 +70,81 @@ router.post('/discover', async (req, res) => {
 
   const base = server_url.replace(/\/$/, '');
   const apiBase = base + '/api/v1';
+  const https = require('https');
+  const agent = new https.Agent({ rejectUnauthorized: false });
+
+  // Helper: parse Set-Cookie headers into a cookie jar
+  function parseCookies(setCookieHeader) {
+    if (!setCookieHeader) return {};
+    const headers = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+    const jar = {};
+    for (const h of headers) {
+      const part = h.split(';')[0].trim();
+      const eq = part.indexOf('=');
+      if (eq > 0) jar[part.slice(0, eq)] = part.slice(eq + 1);
+    }
+    return jar;
+  }
+  function cookieJarToStr(jar) {
+    return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
+  }
 
   try {
-    // Step 1: Login to get session
+    // Step 1: GET the login page to obtain CSRF cookie
+    const csrfResp = await fetch(`${apiBase}/auth/login`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      agent,
+      timeout: 10000,
+    }).catch(() => null);
+
+    let cookieJar = {};
+    let csrfToken = '';
+    if (csrfResp) {
+      const raw = csrfResp.headers.raw?.()['set-cookie'] || csrfResp.headers.get('set-cookie');
+      cookieJar = parseCookies(raw);
+      // CSRF token is typically in a cookie named _csrf or x-csrf-token
+      csrfToken = cookieJar['_csrf'] || cookieJar['csrfToken'] || '';
+    }
+
+    // Step 2: POST login with CSRF token
     const loginResp = await fetch(`${apiBase}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': cookieJarToStr(cookieJar),
+        'X-CSRF-Token': csrfToken,
+        'Origin': base,
+        'Referer': `${base}/auth/login`,
+      },
       body: JSON.stringify({ email, password }),
+      agent,
       timeout: 10000,
     });
 
     if (!loginResp.ok) {
       const body = await loginResp.text();
-      return res.status(401).json({ error: `Login failed (${loginResp.status}): ${body.slice(0,200)}` });
+      // If CSRF still fails, inform user to use manual API key entry
+      if (loginResp.status === 403 || body.includes('CSRF')) {
+        return res.status(401).json({
+          error: 'Auto-discover cannot bypass Pangolin CSRF protection. ' +
+                 'Please generate an API key manually in Pangolin → Organization → API Keys, ' +
+                 'then paste it in the API Key field below.',
+          manual: true,
+        });
+      }
+      return res.status(401).json({ error: `Login failed (${loginResp.status}): ${body.slice(0, 200)}` });
     }
 
-    const sessionCookie = loginResp.headers.get('set-cookie');
-    if (!sessionCookie) {
-      return res.status(401).json({ error: 'Login succeeded but no session cookie returned' });
-    }
+    // Merge session cookies
+    const loginCookieRaw = loginResp.headers.raw?.()['set-cookie'] || loginResp.headers.get('set-cookie');
+    Object.assign(cookieJar, parseCookies(loginCookieRaw));
+    const cookieStr = cookieJarToStr(cookieJar);
 
-    const cookieStr = sessionCookie.split(',').map(c => c.split(';')[0].trim()).join('; ');
-
-    // Step 2: Get list of orgs
+    // Step 3: Get list of orgs
     const orgsResp = await fetch(`${apiBase}/orgs`, {
       headers: { Cookie: cookieStr },
+      agent,
       timeout: 10000,
     });
 
@@ -107,7 +157,7 @@ router.post('/discover', async (req, res) => {
       }));
     }
 
-    // Step 3: If org_id provided, create/get an API key
+    // Step 4: Create API key for the target org
     let apiKey = null;
     const targetOrg = org_id || (orgs[0] && orgs[0].orgId);
 
@@ -115,8 +165,14 @@ router.post('/discover', async (req, res) => {
       try {
         const keyResp = await fetch(`${apiBase}/org/${targetOrg}/api-key`, {
           method: 'PUT',
-          headers: { Cookie: cookieStr, 'Content-Type': 'application/json' },
+          headers: {
+            Cookie: cookieStr,
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+            'Origin': base,
+          },
           body: JSON.stringify({ name: 'ZTGuard Dashboard' }),
+          agent,
           timeout: 10000,
         });
         if (keyResp.ok) {
@@ -133,7 +189,7 @@ router.post('/discover', async (req, res) => {
       server_url: base,
       message: apiKey
         ? `Connected! Found ${orgs.length} org(s). API key created.`
-        : `Connected! Found ${orgs.length} org(s). Create an API key manually in Pangolin → API Keys.`,
+        : `Connected! Found ${orgs.length} org(s). Generate an API key in Pangolin → Organization → API Keys.`,
     });
 
   } catch (err) {
