@@ -241,6 +241,7 @@ const BRANDING_DEFAULTS = [
   ['hide_sidebar_branding', '1'],
   ['email_sender_name', 'ZTGuard'],
   ['email_use_logo',    '1'],
+  ['email_logo_url',    'https://ztguard.net/images/ztguard-logo-dark.png'],
 ];
 const insertBranding = db.prepare(
   `INSERT OR IGNORE INTO branding_config (org_id, key, value) VALUES (?, ?, ?)`

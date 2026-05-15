@@ -257,7 +257,21 @@ button.primary { border-radius: 8px; }"
                 <label class="form-label">Sender Display Name</label>
                 <input class="form-input" id="brEmailSenderName" value="${escHtml(brandingConfig.email_sender_name || 'ZTGuard')}"
                   placeholder="ZTGuard">
-                <div class="form-hint">Shown as the sender name in Pangolin notification emails — e.g. <code>ZTGuard &lt;noreply@yourdomain.com&gt;</code></div>
+                <div class="form-hint">Shown as the sender name in Pangolin notification emails.</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Email Logo URL</label>
+                <input class="form-input" id="brEmailLogoUrl"
+                  value="${escHtml(brandingConfig.email_logo_url || 'https://ztguard.net/images/ztguard-logo-dark.png')}"
+                  placeholder="https://yoursite.com/your-logo.png">
+                <div class="form-hint">
+                  Public URL to the logo image shown in Pangolin notification emails (OTP codes, invitations, password resets).<br>
+                  Must be a publicly accessible HTTPS URL. Saves directly to Pangolin's email template — restart Pangolin to apply.
+                </div>
+                ${brandingConfig.email_logo_url
+                  ? `<div style="margin-top:8px"><img src="${escHtml(brandingConfig.email_logo_url)}" alt="Email logo preview" style="max-height:48px;max-width:200px;border:1px solid #e5e7eb;border-radius:4px;padding:4px;background:white" onerror="this.style.display='none'"></div>`
+                  : ''}
               </div>
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
                 <input type="checkbox" id="brEmailUseLogo" ${brandingConfig.email_use_logo !== '0' ? 'checked' : ''}
@@ -726,6 +740,7 @@ async function saveBranding() {
     custom_footer_html: document.getElementById('brFooterHtml')?.value || undefined,
     email_sender_name:  document.getElementById('brEmailSenderName')?.value?.trim() || undefined,
     email_use_logo:     document.getElementById('brEmailUseLogo')?.checked,
+    email_logo_url:     document.getElementById('brEmailLogoUrl')?.value?.trim() || undefined,
   };
   if (newLogoData) body.logo_data = newLogoData;
   try {

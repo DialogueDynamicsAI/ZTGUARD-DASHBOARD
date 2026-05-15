@@ -9,6 +9,35 @@ const BRAND_LOGOS_DIR = process.env.BRAND_LOGOS_DIR || '/app/brand-logos';
 const PANGOLIN_CSS_PATH = process.env.PANGOLIN_CSS_PATH || '/app/pangolin-css/4b2b6ba26710cf1d.css';
 const PANGOLIN_CONFIG_PATH = '/app/pangolin-config/config.yml';
 
+// Patch Pangolin's compiled server.mjs to use a custom email logo URL
+function updatePangolinEmailLogo(logoUrl) {
+  const serverMjsPath = '/app/dist/server.mjs';
+  if (!fs.existsSync(serverMjsPath)) {
+    console.warn('[branding] server.mjs not found — skipping email logo patch');
+    return false;
+  }
+  try {
+    let content = fs.readFileSync(serverMjsPath, 'utf8');
+    // Replace any existing image URL in EmailLetterHead
+    const urlPattern = /src:\s*"https:\/\/[^"]*(?:fossorial-public-assets|ztguard\.net\/images)[^"]*"/;
+    if (urlPattern.test(content)) {
+      content = content.replace(urlPattern, `src: "${logoUrl}"`);
+    } else {
+      // Fallback: replace the specific S3 URL
+      const s3Url = 'https://fossorial-public-assets.s3.us-east-1.amazonaws.com/word_mark_black.png';
+      if (content.includes(s3Url)) {
+        content = content.replace(s3Url, logoUrl);
+      }
+    }
+    fs.writeFileSync(serverMjsPath, content, 'utf8');
+    console.log('[branding] Email logo URL updated in server.mjs:', logoUrl);
+    return true;
+  } catch (err) {
+    console.error('[branding] Failed to update email logo:', err.message);
+    return false;
+  }
+}
+
 // Write email sender name to Pangolin config.yml
 function updatePangolinEmailSender(senderName) {
   if (!fs.existsSync(PANGOLIN_CONFIG_PATH)) return false;
@@ -302,7 +331,7 @@ router.post('/', (req, res) => {
   const { org_name, primary_color, login_url, logo_data,
           auth_title, auth_subtitle, custom_css, custom_header_html, custom_footer_html,
           login_theme, hide_attribution, hide_sidebar_branding,
-          email_sender_name, email_use_logo } = req.body;
+          email_sender_name, email_use_logo, email_logo_url } = req.body;
 
   if (org_name !== undefined) set(orgId, 'org_name', org_name);
   if (primary_color !== undefined) {
@@ -351,6 +380,10 @@ router.post('/', (req, res) => {
     updatePangolinEmailSender(email_sender_name);
   }
   if (email_use_logo !== undefined) set(orgId, 'email_use_logo', email_use_logo ? '1' : '0');
+  if (email_logo_url !== undefined && email_logo_url.trim()) {
+    set(orgId, 'email_logo_url', email_logo_url.trim());
+    updatePangolinEmailLogo(email_logo_url.trim());
+  }
 
   // Optionally push org_name to Pangolin API
   const apiUrl = process.env.PANGOLIN_API_URL;
