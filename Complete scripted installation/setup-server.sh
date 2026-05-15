@@ -274,6 +274,8 @@ services:
     image: docker.io/fosrl/pangolin:${PANGOLIN_VERSION}
     container_name: pangolin
     restart: unless-stopped
+    environment:
+      - BRANDING_APP_NAME=ZTGuard
     volumes:
       - ./config:/app/config
     healthcheck:
