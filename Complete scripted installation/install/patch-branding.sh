@@ -416,11 +416,14 @@ if '"Pangolin"' in patched:
     count += 1
     print('  Replaced Pangolin brand name in email context')
 
-# 4. Remove word_mark image references in emails (shows "PANGOLIN" wordmark text)
-for wm in ['word_mark.png', 'word_mark_black.png', 'word_mark_white.png']:
-    # In email context these show as Pangolin wordmarks - the mounted volumes
-    # already override these for the web UI but not for emails
-    pass  # Handled by volume mounts for web; emails use Img components
+# 4. Replace EmailLetterHead S3 logo with ZTGuard logo from ztguard.net
+old_logo = 'https://fossorial-public-assets.s3.us-east-1.amazonaws.com/word_mark_black.png'
+new_logo = 'https://ztguard.net/images/ztguard-logo-dark.png'
+if old_logo in patched:
+    patched = patched.replace(old_logo, new_logo)
+    patched = patched.replace('alt: "Pangolin Logo"', 'alt: "ZTGuard"')
+    count += 1
+    print('  Replaced email header logo with ZTGuard logo from ztguard.net')
 
 print(f'  Total email patches: {count}')
 with open('$SERVER_MJS_PATCHED', 'w') as f:
@@ -429,6 +432,34 @@ PYEOF
 
     docker cp "$SERVER_MJS_PATCHED" "$PANGOLIN_CONTAINER:$SERVER_MJS_PATH"
     success "Email templates patched"
+fi
+
+# ── Patch i18n chunk — remove supporter key notice text ───────────────────────
+CHUNK_6491=$(docker exec "$PANGOLIN_CONTAINER" find /app/.next/server/chunks -name "6491.js" 2>/dev/null | head -1)
+if [ -n "$CHUNK_6491" ]; then
+    CHUNK_LOCAL="$BRANDING_DIR/6491-orig.js"
+    CHUNK_PATCHED="$BRANDING_DIR/6491-patched.js"
+    docker cp "$PANGOLIN_CONTAINER:$CHUNK_6491" "$CHUNK_LOCAL"
+    python3 - << PYEOF
+with open('$CHUNK_LOCAL') as f:
+    s = f.read()
+replacements = [
+    ('Server is running without a supporter key. Consider supporting the project!', ''),
+    ('without a supporter key', ''),
+    ('Supporter Key', ''),
+]
+count = 0
+for old, new in replacements:
+    if old in s:
+        s = s.replace(old, new)
+        count += 1
+        print(f'  Removed: {old[:60]}')
+print(f'  i18n patches: {count}')
+with open('$CHUNK_PATCHED', 'w') as f:
+    f.write(s)
+PYEOF
+    docker cp "$CHUNK_PATCHED" "$PANGOLIN_CONTAINER:$CHUNK_6491"
+    info "  Supporter key notice removed from i18n chunk"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
