@@ -79,7 +79,7 @@ fi
 
 # ── Install base packages ─────────────────────────────────────────────────────
 step "Installing base packages..."
-apt-get install -y curl wget git openssl python3 iptables-persistent -qq 2>/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y curl wget git openssl python3 iptables-persistent -qq 2>/dev/null
 success "Base packages ready"
 
 # ── Add hairpin NAT iptables rules ────────────────────────────────────────────
