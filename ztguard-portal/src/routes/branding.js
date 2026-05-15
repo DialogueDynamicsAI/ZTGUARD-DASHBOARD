@@ -93,26 +93,12 @@ else{console.log('pattern not found');}
 
 // Write email sender name to Pangolin config.yml
 function updatePangolinEmailSender(senderName) {
-  if (!fs.existsSync(PANGOLIN_CONFIG_PATH)) return false;
-  try {
-    let content = fs.readFileSync(PANGOLIN_CONFIG_PATH, 'utf8');
-    const smtpFrom = content.match(/smtp_from:\s*"([^"]*)"/)?.[1] || '';
-    const baseEmail = smtpFrom.replace(/^.*<|>$/g, '') || smtpFrom;
-    const newValue = baseEmail ? `${senderName} <${baseEmail}>` : senderName;
-    if (content.includes('no_reply:')) {
-      content = content.replace(/no_reply:\s*"[^"]*"/, `no_reply: "${newValue}"`);
-    }
-    // Also update smtp_from display name
-    if (smtpFrom) {
-      content = content.replace(/smtp_from:\s*"[^"]*"/, `smtp_from: "${newValue}"`);
-    }
-    fs.writeFileSync(PANGOLIN_CONFIG_PATH, content, 'utf8');
-    console.log('[branding] Updated Pangolin email sender name:', newValue);
-    return true;
-  } catch (err) {
-    console.error('[branding] Failed to update email sender:', err.message);
-    return false;
-  }
+  // NOTE: no_reply in config.yml must be a valid plain email address.
+  // The sender display name is controlled by BRANDING_APP_NAME env var (set in docker-compose)
+  // and by patching server.mjs — do NOT write display names to no_reply.
+  // This function is intentionally a no-op for config.yml changes.
+  console.log('[branding] Email sender name saved (apply via BRANDING_APP_NAME + Restart Pangolin)');
+  return true;
 }
 const PANGOLIN_JS_CHUNK = '/app/pangolin-css/auth-resource-page-patched-new.js';
 const PANGOLIN_JS_ORIG  = '/app/pangolin-css/auth-resource-page-orig.js';
