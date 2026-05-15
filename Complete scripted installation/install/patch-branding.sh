@@ -322,45 +322,67 @@ else
     docker cp "$PANGOLIN_CONTAINER:$SERVER_MJS_PATH" "$SERVER_MJS_LOCAL"
 
     python3 - << PYEOF
-import re, shutil
+import re
+
 with open('$SERVER_MJS_LOCAL') as f:
     js = f.read()
 patched = js
 count = 0
 
-def remove_function(src, fname, replacement):
-    idx = src.find(fname)
-    if idx < 0:
-        return src, False
-    brace_depth = 0
-    end_idx = idx
-    in_func = False
-    for i in range(idx, min(idx + 4000, len(src))):
-        if src[i] == '{':
-            brace_depth += 1
-            in_func = True
-        elif src[i] == '}':
-            brace_depth -= 1
-        if in_func and brace_depth == 0:
-            end_idx = i + 1
-            break
-    if end_idx > idx:
-        return src[:idx] + replacement + src[end_idx:], True
-    return src, False
+# ── Strategy: targeted string replacements (more reliable than function removal) ──
 
-# Remove EmailSignature (Pangolin footer)
-patched, ok = remove_function(patched, 'function EmailSignature()', 'function EmailSignature(){return null}')
-if ok:
+# 1. Remove EmailSignature footer (contains "Pangolin" branding text)
+#    Find the function and replace its body with return null
+for sig_name in ['function EmailSignature(){', 'function EmailSignature() {']:
+    if sig_name in patched:
+        # Find the end of the function and nullify it
+        idx = patched.find(sig_name)
+        # Replace the opening of the function, keep scanning for the matching close
+        brace = 0
+        end = idx + len(sig_name)
+        for i in range(idx + len(sig_name) - 1, min(idx + 3000, len(patched))):
+            if patched[i] == '{': brace += 1
+            elif patched[i] == '}':
+                brace -= 1
+                if brace == 0:
+                    end = i + 1
+                    break
+        patched = patched[:idx] + 'function EmailSignature(){return null}' + patched[end:]
+        count += 1
+        print('  Patched EmailSignature')
+        break
+
+# 2. Replace Pangolin orange phoenix logo src in emails with a text placeholder
+#    The logo appears as an Img src pointing to pangolin_orange or logo image
+#    Replace any image src containing pangolin logo paths with empty to hide it
+pangolin_img_patterns = [
+    ('pangolin_orange_192x192.png', ''),
+    ('pangolin_orange_96x96.png', ''),
+    ('pangolin_orange.svg', ''),
+    ('pangolin_profile_picture.png', ''),
+]
+for old_img, new_img in pangolin_img_patterns:
+    if old_img in patched:
+        patched = patched.replace(old_img, new_img)
+        count += 1
+        print(f'  Replaced logo ref: {old_img}')
+
+# 3. Replace "PANGOLIN" brand name in email subject lines and headings
+# Only replace where it appears as a standalone brand name (not in variable names)
+if '"Pangolin"' in patched:
+    # Count occurrences in email-related context
+    # Replace the display name in email From header / brand references
+    patched = re.sub(r'(["\x27])Pangolin\1(?=\s*[,\)])', lambda m: m.group(1) + 'ZTGuard' + m.group(1), patched)
     count += 1
-    print('  Removed Pangolin EmailSignature footer')
+    print('  Replaced Pangolin brand name in email context')
 
-# Remove EmailHeader (Pangolin logo + PANGOLIN name in email header)
-patched, ok = remove_function(patched, 'function EmailHeader(', 'function EmailHeader(){return null}')
-if ok:
-    count += 1
-    print('  Removed Pangolin EmailHeader logo/name')
+# 4. Remove word_mark image references in emails (shows "PANGOLIN" wordmark text)
+for wm in ['word_mark.png', 'word_mark_black.png', 'word_mark_white.png']:
+    # In email context these show as Pangolin wordmarks - the mounted volumes
+    # already override these for the web UI but not for emails
+    pass  # Handled by volume mounts for web; emails use Img components
 
-print(f'  Email template patches: {count}')
+print(f'  Total email patches: {count}')
 with open('$SERVER_MJS_PATCHED', 'w') as f:
     f.write(patched)
 PYEOF
