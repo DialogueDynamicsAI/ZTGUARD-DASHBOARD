@@ -416,14 +416,16 @@ if '"Pangolin"' in patched:
     count += 1
     print('  Replaced Pangolin brand name in email context')
 
-# 4. Replace EmailLetterHead S3 logo with ZTGuard logo from ztguard.net
+# 4. Replace EmailLetterHead S3 logo with ZTGuard logo (light version for white email backgrounds)
 old_logo = 'https://fossorial-public-assets.s3.us-east-1.amazonaws.com/word_mark_black.png'
-new_logo = 'https://ztguard.net/images/ztguard-logo-dark.png'
+new_logo = 'https://ztguard.net/images/ztguard-logo-light.png'
 if old_logo in patched:
     patched = patched.replace(old_logo, new_logo)
     patched = patched.replace('alt: "Pangolin Logo"', 'alt: "ZTGuard"')
+    # Reduce width so full logo+text fits in email preview panes
+    patched = patched.replace('width: "180"', 'width: "160"')
     count += 1
-    print('  Replaced email header logo with ZTGuard logo from ztguard.net')
+    print('  Replaced email header logo with ZTGuard logo (light, 160px)')
 
 print(f'  Total email patches: {count}')
 with open('$SERVER_MJS_PATCHED', 'w') as f:

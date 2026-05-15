@@ -394,6 +394,30 @@ PYEOF
     fi
 fi
 
+# ── Add BRANDING_APP_NAME=ZTGuard to Pangolin docker-compose ──────────────────
+# This sets the email sender display name to "ZTGuard" instead of "Pangolin"
+PANGOLIN_COMPOSE="$PANGOLIN_DIR/docker-compose.yml"
+if [[ -f "$PANGOLIN_COMPOSE" ]] && ! grep -q "BRANDING_APP_NAME" "$PANGOLIN_COMPOSE" 2>/dev/null; then
+    python3 - << PYEOF
+with open('$PANGOLIN_COMPOSE') as f:
+    c = f.read()
+# Add environment section to pangolin service (before volumes:)
+if 'BRANDING_APP_NAME' not in c:
+    c = c.replace(
+        '    restart: unless-stopped\n    volumes:',
+        '    restart: unless-stopped\n    environment:\n      - BRANDING_APP_NAME=ZTGuard\n    volumes:',
+        1
+    )
+    open('$PANGOLIN_COMPOSE', 'w').write(c)
+    print('  BRANDING_APP_NAME=ZTGuard added to Pangolin docker-compose')
+else:
+    print('  BRANDING_APP_NAME already set')
+PYEOF
+    success "Email sender name configured (ZTGuard)"
+else
+    info "BRANDING_APP_NAME already in docker-compose.yml"
+fi
+
 # ── Restart Pangolin to apply patches + integration API ───────────────────────
 step "Restarting Pangolin..."
 cd "$PANGOLIN_DIR"
