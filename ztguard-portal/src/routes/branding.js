@@ -9,31 +9,84 @@ const BRAND_LOGOS_DIR = process.env.BRAND_LOGOS_DIR || '/app/brand-logos';
 const PANGOLIN_CSS_PATH = process.env.PANGOLIN_CSS_PATH || '/app/pangolin-css/4b2b6ba26710cf1d.css';
 const PANGOLIN_CONFIG_PATH = '/app/pangolin-config/config.yml';
 
-// Patch Pangolin's compiled server.mjs to use a custom email logo URL
-function updatePangolinEmailLogo(logoUrl) {
-  const serverMjsPath = '/app/dist/server.mjs';
-  if (!fs.existsSync(serverMjsPath)) {
-    console.warn('[branding] server.mjs not found — skipping email logo patch');
-    return false;
-  }
+// Execute a command inside the Pangolin container via Docker socket
+function dockerExecPangolin(cmd) {
+  return new Promise((resolve, reject) => {
+    const http = require('http');
+    // Create exec instance
+    const createBody = JSON.stringify({ AttachStdout: true, AttachStderr: true, Cmd: ['sh', '-c', cmd] });
+    const createReq = http.request({
+      socketPath: '/var/run/docker.sock',
+      path: '/containers/pangolin/exec',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': createBody.length },
+    }, (res) => {
+      let data = '';
+      res.on('data', d => { data += d; });
+      res.on('end', () => {
+        try {
+          const { Id } = JSON.parse(data);
+          // Start exec
+          const startBody = JSON.stringify({ Detach: false });
+          const startReq = http.request({
+            socketPath: '/var/run/docker.sock',
+            path: `/exec/${Id}/start`,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': startBody.length },
+          }, (r) => {
+            let out = '';
+            r.on('data', d => { out += d; });
+            r.on('end', () => resolve(out));
+          });
+          startReq.on('error', reject);
+          startReq.end(startBody);
+        } catch (e) { reject(e); }
+      });
+    });
+    createReq.on('error', reject);
+    createReq.end(createBody);
+  });
+}
+
+// Patch Pangolin's server.mjs email logo URL via Docker exec
+async function updatePangolinEmailLogo(logoUrl) {
   try {
-    let content = fs.readFileSync(serverMjsPath, 'utf8');
-    // Replace any existing image URL in EmailLetterHead
-    const urlPattern = /src:\s*"https:\/\/[^"]*(?:fossorial-public-assets|ztguard\.net\/images)[^"]*"/;
-    if (urlPattern.test(content)) {
-      content = content.replace(urlPattern, `src: "${logoUrl}"`);
-    } else {
-      // Fallback: replace the specific S3 URL
-      const s3Url = 'https://fossorial-public-assets.s3.us-east-1.amazonaws.com/word_mark_black.png';
-      if (content.includes(s3Url)) {
-        content = content.replace(s3Url, logoUrl);
-      }
-    }
-    fs.writeFileSync(serverMjsPath, content, 'utf8');
-    console.log('[branding] Email logo URL updated in server.mjs:', logoUrl);
+    const safeUrl = logoUrl.replace(/'/g, "\\'");
+    // Use Node.js inside the Pangolin container to patch server.mjs
+    const script = `node -e "
+const fs=require('fs');
+const p='/app/dist/server.mjs';
+let s=fs.readFileSync(p,'utf8');
+const old=s.match(/src: \\"https:\\/\\/[^\\"]*(?:fossorial-public-assets|ztguard\\.net\\/images)[^\\"]*\\"/);
+if(old){s=s.replace(old[0],'src: \\"${safeUrl}\\"');fs.writeFileSync(p,s);console.log('logo updated');}
+else{console.log('pattern not found, trying S3 fallback');const s3='https://fossorial-public-assets.s3.us-east-1.amazonaws.com/word_mark_black.png';if(s.includes(s3)){s=s.replace(s3,'${safeUrl}');fs.writeFileSync(p,s);console.log('logo updated via S3 fallback');}else{console.log('no logo pattern found');}}
+"`;
+    const result = await dockerExecPangolin(script);
+    console.log('[branding] Email logo update:', result.toString().trim());
     return true;
   } catch (err) {
-    console.error('[branding] Failed to update email logo:', err.message);
+    console.error('[branding] Failed to update email logo via Docker:', err.message);
+    return false;
+  }
+}
+
+// Patch BRANDING_APP_NAME in Pangolin's server.mjs via Docker exec
+async function updatePangolinBrandingAppName(appName) {
+  try {
+    const safeName = appName.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    const script = `node -e "
+const fs=require('fs');
+const p='/app/dist/server.mjs';
+let s=fs.readFileSync(p,'utf8');
+const count=(s.match(/process\\.env\\.BRANDING_APP_NAME \\|\\| \\"Pangolin\\"/g)||[]).length;
+if(count>0){s=s.replace(/process\\.env\\.BRANDING_APP_NAME \\|\\| \\"Pangolin\\"/g,'process.env.BRANDING_APP_NAME || \\"${safeName}\\"');fs.writeFileSync(p,s);console.log('appName updated, count:'+count);}
+else{console.log('pattern not found');}
+"`;
+    const result = await dockerExecPangolin(script);
+    console.log('[branding] BrandingAppName update:', result.toString().trim());
+    return true;
+  } catch (err) {
+    console.error('[branding] Failed to update app name via Docker:', err.message);
     return false;
   }
 }
@@ -378,11 +431,12 @@ router.post('/', (req, res) => {
   if (email_sender_name !== undefined) {
     set(orgId, 'email_sender_name', email_sender_name);
     updatePangolinEmailSender(email_sender_name);
+    updatePangolinBrandingAppName(email_sender_name).catch(e => console.error('[branding] BrandingAppName:', e.message));
   }
   if (email_use_logo !== undefined) set(orgId, 'email_use_logo', email_use_logo ? '1' : '0');
   if (email_logo_url !== undefined && email_logo_url.trim()) {
     set(orgId, 'email_logo_url', email_logo_url.trim());
-    updatePangolinEmailLogo(email_logo_url.trim());
+    updatePangolinEmailLogo(email_logo_url.trim()).catch(e => console.error('[branding] EmailLogo:', e.message));
   }
 
   // Optionally push org_name to Pangolin API
