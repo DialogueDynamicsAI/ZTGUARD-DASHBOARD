@@ -1,6 +1,6 @@
 /* ─── Authentication Activity Page ─────────────────────────────────────── */
 
-let activityView = 'overview'; // 'overview' | 'users' | 'log' | 'network' | 'sessions'
+let activityView = 'overview'; // 'overview' | 'users' | 'log' | 'network' | 'sessions' | 'retention'
 let selectedUser = null;
 
 async function initAuthActivity() {
@@ -68,7 +68,7 @@ function renderActivityPage(stats) {
   // View toggle tabs
   const tabs = `
     <div style="display:flex;gap:2px;background:#f1f5f9;padding:4px;border-radius:10px;margin-bottom:20px;width:fit-content;flex-wrap:wrap">
-      ${[['overview','📊 Overview'],['users','Users'],['log','Access Log'],['network','Network Logs'],['sessions','Sessions']].map(([v,l]) =>
+      ${[['overview','Overview'],['users','Users'],['log','Access Log'],['network','Network Logs'],['sessions','Sessions'],['retention','Log Retention']].map(([v,l]) =>
         `<button onclick="switchActivityView('${v}')" style="padding:7px 18px;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;background:${activityView===v?'#fff':'transparent'};color:${activityView===v?'#0f172a':'#64748b'};box-shadow:${activityView===v?'0 1px 3px rgba(0,0,0,0.1)':'none'}">${l}</button>`
       ).join('')}
     </div>
@@ -89,6 +89,7 @@ async function loadActivityView() {
     else if (activityView === 'log') await renderLogView(content);
     else if (activityView === 'network') await renderNetworkView(content);
     else if (activityView === 'sessions') await renderSessionsView(content);
+    else if (activityView === 'retention') await renderRetentionView(content);
   } catch (err) {
     content.innerHTML = `<div class="alert alert-error">Failed: ${err.message}</div>`;
   }
@@ -396,122 +397,303 @@ async function renderSessionsView(container) {
 /* ─── Overview / Charts ──────────────────────────────────────────────────── */
 let chartInstances = {};
 
-async function renderOverviewCharts(container) {
-  const [chart7, chart30] = await Promise.all([
-    api('/api/activity/chart?days=7'),
-    api('/api/activity/chart?days=30'),
-  ]);
+let _overviewDays = 30;
 
-  const data = chart7;
+async function renderOverviewCharts(container) {
+  const data = await api(`/api/activity/chart?days=${_overviewDays}`);
+
   const days = data.accessByDay || [];
   const labels = days.map(d => new Date(d.day + 'T00:00:00').toLocaleDateString('en-US', {month:'short',day:'numeric'}));
   const allowed = days.map(d => d.allowed || 0);
   const denied  = days.map(d => d.denied  || 0);
+  const uniqueIps = days.map(d => d.uniqueIps || 0);
 
-  const topUsers = data.topUsers || [];
-  const totals = data.totals || { allowed: 0, denied: 0 };
-  const totalRequests = (totals.allowed || 0) + (totals.denied || 0);
-  const successRate = totalRequests > 0 ? Math.round((totals.allowed / totalRequests) * 100) : 0;
+  const topUsers     = data.topUsers     || [];
+  const topIps       = data.topIps       || [];
+  const topResources = data.topResources || [];
+  const authBreakdown = data.authBreakdown || [];
+  const sessions     = data.sessionsByDay || [];
+  const totals = data.totals || { allowed: 0, denied: 0, total: 0, uniqueUsers: 0, uniqueIps: 0 };
+  const totalReq = (totals.allowed || 0) + (totals.denied || 0);
+  const successRate = totalReq > 0 ? Math.round((totals.allowed / totalReq) * 100) : 0;
+
+  const noData = days.length === 0;
+  const noDataMsg = `<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">
+    No data for this period.<br>
+    <span style="font-size:11px">Check <button class="btn btn-ghost btn-sm" style="display:inline;padding:0 4px" onclick="switchActivityView('retention')">Log Retention settings</button> — access logs may be set to 0 days.</span>
+  </div>`;
+
+  const periodBtn = (d, label) => `<button onclick="_overviewDays=${d};renderOverviewCharts(document.getElementById('activityContent'))"
+    style="padding:4px 10px;border-radius:5px;border:1px solid #e5e7eb;font-size:11px;cursor:pointer;font-family:inherit;
+    background:${_overviewDays===d?'#2563eb':'white'};color:${_overviewDays===d?'white':'#374151'}">${label}</button>`;
 
   container.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:16px;align-items:center">
+      <span style="font-size:12px;color:#6b7280;margin-right:4px">Period:</span>
+      ${periodBtn(7,'7d')} ${periodBtn(14,'14d')} ${periodBtn(30,'30d')} ${periodBtn(90,'90d')}
+    </div>
 
-      <!-- Access Activity Chart -->
-      <div class="card" style="grid-column:1/-1">
+    <!-- Row 1: Main access trend + allow/deny donut -->
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="card">
         <div class="card-header">
-          <h3>Access Activity — Last 7 Days</h3>
+          <h3>Access Activity — ${_overviewDays} Days</h3>
           <div style="display:flex;gap:12px;font-size:12px">
-            <span style="color:#10b981">● Allowed: ${totals.allowed||0}</span>
-            <span style="color:#ef4444">● Denied: ${totals.denied||0}</span>
-            <span style="color:#64748b">Success rate: ${successRate}%</span>
+            <span style="color:#10b981">● ${totals.allowed||0} allowed</span>
+            <span style="color:#ef4444">● ${totals.denied||0} denied</span>
+            <span style="color:#6b7280">${successRate}% success</span>
           </div>
         </div>
-        <div class="card-body">
-          <canvas id="accessChart" height="120"></canvas>
-          ${days.length === 0 ? '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">No data yet — log retention was just enabled. Check back after some activity.</div>' : ''}
-        </div>
-      </div>
-
-      <!-- Top Users -->
-      <div class="card">
-        <div class="card-header"><h3>Top Users (7 days)</h3></div>
         <div class="card-body" style="padding:12px">
-          ${topUsers.length === 0
-            ? '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">No user data yet</div>'
-            : topUsers.map((u,i) => `
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                <span style="width:20px;height:20px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;flex-shrink:0">${i+1}</span>
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.email)}</div>
-                  <div style="height:4px;background:#f1f5f9;border-radius:2px;margin-top:3px">
-                    <div style="height:4px;background:#2563eb;border-radius:2px;width:${Math.round((u.requests/topUsers[0].requests)*100)}%"></div>
-                  </div>
-                </div>
-                <span style="font-size:12px;font-weight:700;color:#2563eb;flex-shrink:0">${u.requests}</span>
-              </div>
-            `).join('')}
+          ${noData ? noDataMsg : '<canvas id="accessChart" height="100"></canvas>'}
         </div>
       </div>
-
-      <!-- Allow vs Deny Donut -->
       <div class="card">
-        <div class="card-header"><h3>Allow vs Deny (7 days)</h3></div>
-        <div class="card-body" style="display:flex;align-items:center;justify-content:center;padding:20px">
-          <div style="position:relative;width:160px;height:160px">
+        <div class="card-header"><h3>Allow vs Deny</h3></div>
+        <div class="card-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px">
+          <div style="position:relative;width:130px;height:130px">
             <canvas id="donutChart"></canvas>
             <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
-              <div style="font-size:22px;font-weight:800;color:#0f172a">${successRate}%</div>
-              <div style="font-size:11px;color:#64748b">success</div>
+              <div style="font-size:20px;font-weight:800">${successRate}%</div>
+              <div style="font-size:10px;color:#64748b">success</div>
             </div>
           </div>
-          <div style="margin-left:20px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:12px;height:12px;background:#10b981;border-radius:3px"></span><span style="font-size:12px">Allowed: <strong>${totals.allowed||0}</strong></span></div>
-            <div style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;background:#ef4444;border-radius:3px"></span><span style="font-size:12px">Denied: <strong>${totals.denied||0}</strong></span></div>
+          <div style="width:100%">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span><span style="color:#10b981">●</span> Allowed</span><strong>${totals.allowed||0}</strong></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span><span style="color:#ef4444">●</span> Denied</span><strong>${totals.denied||0}</strong></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span><span style="color:#2563eb">●</span> Unique IPs</span><strong>${totals.uniqueIps||0}</strong></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px"><span><span style="color:#8b5cf6">●</span> SSO Users</span><strong>${totals.uniqueUsers||0}</strong></div>
           </div>
         </div>
       </div>
+    </div>
 
+    <!-- Row 2: Unique IPs trend + Auth method breakdown -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="card">
+        <div class="card-header"><h3>Unique Source IPs per Day</h3></div>
+        <div class="card-body" style="padding:12px">
+          ${noData ? noDataMsg : '<canvas id="ipsChart" height="100"></canvas>'}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Auth Method Breakdown</h3></div>
+        <div class="card-body" style="padding:12px">
+          ${authBreakdown.length === 0 ? noDataMsg :
+            authBreakdown.map(a => `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <span style="font-size:12px;font-weight:600">${escHtml(a.method||'Unknown')}</span>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:100px;height:6px;background:#f1f5f9;border-radius:3px">
+                    <div style="height:6px;background:#2563eb;border-radius:3px;width:${Math.round((a.count/totalReq)*100)}%"></div>
+                  </div>
+                  <span style="font-size:12px;color:#6b7280;min-width:40px;text-align:right">${a.count}</span>
+                </div>
+              </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: Top IPs + Top Resources -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="card">
+        <div class="card-header"><h3>Top Source IPs</h3></div>
+        <div class="card-body" style="padding:0">
+          ${topIps.length === 0 ? `<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">${noDataMsg}</div>` :
+          `<table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:8px 12px;text-align:left;color:#374151;font-weight:600">IP Address</th>
+              <th style="padding:8px 12px;text-align:right;color:#374151;font-weight:600">Requests</th>
+              <th style="padding:8px 12px;text-align:right;color:#374151;font-weight:600">Allowed</th>
+              <th style="padding:8px 12px;text-align:right;color:#374151;font-weight:600">Denied</th>
+            </tr></thead>
+            <tbody>${topIps.map((ip, i) => `
+              <tr style="border-bottom:1px solid #f1f5f9">
+                <td style="padding:7px 12px;font-family:monospace">${escHtml(ip.ip)}</td>
+                <td style="padding:7px 12px;text-align:right;font-weight:600">${ip.requests}</td>
+                <td style="padding:7px 12px;text-align:right;color:#10b981">${ip.allowed}</td>
+                <td style="padding:7px 12px;text-align:right;color:${ip.denied>0?'#ef4444':'#94a3b8'}">${ip.denied}</td>
+              </tr>`).join('')}</tbody>
+          </table>`}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Top Resources Accessed</h3></div>
+        <div class="card-body" style="padding:0">
+          ${topResources.length === 0 ? `<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">${noDataMsg}</div>` :
+          `<table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:8px 12px;text-align:left;color:#374151;font-weight:600">Resource</th>
+              <th style="padding:8px 12px;text-align:right;color:#374151;font-weight:600">Requests</th>
+              <th style="padding:8px 12px;text-align:right;color:#374151;font-weight:600">Denied</th>
+            </tr></thead>
+            <tbody>${topResources.map(r => `
+              <tr style="border-bottom:1px solid #f1f5f9">
+                <td style="padding:7px 12px">
+                  <div style="font-weight:600">${escHtml(r.resourceName||'Unknown')}</div>
+                  <div style="font-size:10px;color:#94a3b8">${escHtml(r.domain||'')}</div>
+                </td>
+                <td style="padding:7px 12px;text-align:right;font-weight:600">${r.requests}</td>
+                <td style="padding:7px 12px;text-align:right;color:${r.denied>0?'#ef4444':'#94a3b8'}">${r.denied}</td>
+              </tr>`).join('')}</tbody>
+          </table>`}
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 4: Top Users (SSO only) -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <h3>Authenticated Users (Platform SSO)</h3>
+        <span style="font-size:11px;color:#94a3b8">Only visible when resources use Platform SSO authentication</span>
+      </div>
+      <div class="card-body" style="padding:12px">
+        ${topUsers.length === 0
+          ? `<div style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">No SSO users logged in this period. Enable Platform SSO on resources in Pangolin to track individual users.</div>`
+          : topUsers.map((u,i) => `
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <span style="width:22px;height:22px;background:#eff6ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#2563eb;flex-shrink:0">${i+1}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.email)}</div>
+                <div style="height:5px;background:#f1f5f9;border-radius:3px;margin-top:3px">
+                  <div style="height:5px;background:#2563eb;border-radius:3px;width:${Math.round((u.requests/Math.max(topUsers[0].requests,1))*100)}%"></div>
+                </div>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:#2563eb;flex-shrink:0">${u.requests} reqs</span>
+              <span style="font-size:10px;color:#94a3b8;flex-shrink:0">${u.lastSeen ? new Date(u.lastSeen*1000).toLocaleDateString() : ''}</span>
+            </div>
+          `).join('')}
+      </div>
     </div>
   `;
 
-  // Render charts after DOM is ready
   requestAnimationFrame(() => {
-    if (window.Chart && days.length > 0) {
-      // Destroy old instances
-      Object.values(chartInstances).forEach(c => c.destroy && c.destroy());
-      chartInstances = {};
+    if (!window.Chart) return;
+    Object.values(chartInstances).forEach(c => c?.destroy?.());
+    chartInstances = {};
 
+    if (days.length > 0) {
       const ctx1 = document.getElementById('accessChart');
-      if (ctx1) {
-        chartInstances.access = new Chart(ctx1, {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [
-              { label: 'Allowed', data: allowed, backgroundColor: 'rgba(16,185,129,0.8)', borderRadius: 4 },
-              { label: 'Denied',  data: denied,  backgroundColor: 'rgba(239,68,68,0.8)',  borderRadius: 4 },
-            ]
-          },
-          options: {
-            responsive: true, maintainAspectRatio: true,
-            plugins: { legend: { position: 'top' } },
-            scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-          }
-        });
-      }
+      if (ctx1) chartInstances.access = new Chart(ctx1, {
+        type: 'bar',
+        data: { labels, datasets: [
+          { label: 'Allowed', data: allowed, backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 3 },
+          { label: 'Denied',  data: denied,  backgroundColor: 'rgba(239,68,68,0.75)',  borderRadius: 3 },
+        ]},
+        options: { responsive: true, maintainAspectRatio: true,
+          plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+          scales: { x: { stacked: false, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } } }
+        }
+      });
 
-      const ctx2 = document.getElementById('donutChart');
-      if (ctx2) {
-        chartInstances.donut = new Chart(ctx2, {
-          type: 'doughnut',
-          data: {
-            datasets: [{ data: [totals.allowed||0, totals.denied||0], backgroundColor: ['#10b981','#ef4444'], borderWidth: 0 }]
-          },
-          options: { cutout: '70%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
-        });
-      }
+      const ctx3 = document.getElementById('ipsChart');
+      if (ctx3) chartInstances.ips = new Chart(ctx3, {
+        type: 'line',
+        data: { labels, datasets: [{
+          label: 'Unique IPs', data: uniqueIps,
+          borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)',
+          borderWidth: 2, pointRadius: 3, fill: true, tension: 0.3,
+        }]},
+        options: { responsive: true, maintainAspectRatio: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } } }
+        }
+      });
     }
+
+    const ctx2 = document.getElementById('donutChart');
+    if (ctx2) chartInstances.donut = new Chart(ctx2, {
+      type: 'doughnut',
+      data: { datasets: [{ data: [totals.allowed||0, totals.denied||1], backgroundColor: ['#10b981','#ef4444'], borderWidth: 0 }] },
+      options: { cutout: '68%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+    });
   });
+}
+
+/* ─── Log Retention Settings View ───────────────────────────────────────── */
+async function renderRetentionView(container) {
+  container.innerHTML = `<div style="text-align:center;padding:40px"><div class="spinner"></div></div>`;
+  let cfg = { request: 7, access: 0, action: 0, connection: 0 };
+  try { cfg = await api('/api/activity/retention'); } catch (_) {}
+
+  const retentionField = (key, label, hint, current) => `
+    <div class="form-group">
+      <label class="form-label">${label}</label>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input class="form-input" type="number" id="ret_${key}" value="${current}" min="0" max="365"
+          style="max-width:100px;text-align:center;font-size:16px;font-weight:600">
+        <span style="font-size:13px;color:#6b7280">days</span>
+        <span style="font-size:11px;color:${current===0?'#ef4444':'#10b981'};font-weight:600">
+          ${current===0 ? '⚠ Disabled (logs deleted immediately)' : `✓ Keeping ${current} days of logs`}
+        </span>
+      </div>
+      <div class="form-hint">${hint}</div>
+    </div>`;
+
+  container.innerHTML = `
+    <div style="max-width:600px">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3>Log Retention Settings</h3>
+          <span style="font-size:11px;color:#94a3b8">Controls how long Pangolin keeps each type of log</span>
+        </div>
+        <div class="card-body">
+          <div id="retentionStatus" style="margin-bottom:16px"></div>
+
+          ${retentionField('request', 'Request Logs', 'HTTP request audit log — shows access attempts with IP, path, result. Set to 30-90 days for billing.', cfg.request)}
+          ${retentionField('access', 'Access / OTP Logs', 'Email OTP authentication events — shows which emails authenticated. Set to 30+ days to track logins.', cfg.access)}
+          ${retentionField('action', 'Action Logs', 'Admin action audit trail — org changes, user management, config changes.', cfg.action)}
+          ${retentionField('connection', 'Connection Logs', 'WireGuard/Newt tunnel sessions — bandwidth, duration, client IDs.', cfg.connection)}
+
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin:16px 0;font-size:12px;color:#78350f">
+            <strong>Recommended for billing:</strong> Request=90 days, Access=90 days, Action=30 days, Connection=30 days
+            <button class="btn btn-secondary btn-sm" style="margin-left:12px" onclick="applyRecommendedRetention()">Apply Recommended</button>
+          </div>
+
+          <button class="btn btn-primary" onclick="saveRetention()">Save Settings</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Enable Per-User Tracking</h3></div>
+        <div class="card-body" style="font-size:13px">
+          <p style="margin-bottom:12px;color:#374151">Currently, email whitelist OTP does not record the specific user email in logs — only the domain (*@matrixit.net) is captured.</p>
+          <p style="margin-bottom:12px;color:#374151">To see individual emails (e.g. <code>jamie.love@matrixit.net</code>) in every log entry:</p>
+          <ol style="margin-left:20px;color:#374151;line-height:2">
+            <li>Go to <strong>Pangolin Dashboard</strong></li>
+            <li>Resources → your resource → <strong>Authentication tab</strong></li>
+            <li>Turn on <strong>"Use Platform SSO"</strong></li>
+            <li>Keep the Email Whitelist to restrict which domains can log in</li>
+          </ol>
+          <p style="margin-top:12px;color:#6b7280;font-size:12px">After enabling, every request will show the user's email in Auth Activity → Access Log.</p>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveRetention() {
+  const st = document.getElementById('retentionStatus');
+  const body = {
+    request:    parseInt(document.getElementById('ret_request')?.value    || '7'),
+    access:     parseInt(document.getElementById('ret_access')?.value     || '30'),
+    action:     parseInt(document.getElementById('ret_action')?.value     || '30'),
+    connection: parseInt(document.getElementById('ret_connection')?.value || '30'),
+  };
+  st.innerHTML = `<div class="alert alert-info">Saving…</div>`;
+  try {
+    const r = await api('/api/activity/retention', { method: 'POST', body });
+    st.innerHTML = `<div class="alert alert-success">Log retention updated — changes take effect immediately in Pangolin.</div>`;
+    showToast('Log retention saved', 'success');
+  } catch (e) {
+    st.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+function applyRecommendedRetention() {
+  document.getElementById('ret_request').value    = '90';
+  document.getElementById('ret_access').value     = '90';
+  document.getElementById('ret_action').value     = '30';
+  document.getElementById('ret_connection').value = '30';
 }
 
 /* ─── Network Logs View ──────────────────────────────────────────────────── */

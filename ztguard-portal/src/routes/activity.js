@@ -253,7 +253,7 @@ router.get('/network', (req, res) => {
 router.get('/chart', (req, res) => {
   try {
     const db = getPangolinDb();
-    const days = parseInt(req.query.days || '7');
+    const days = parseInt(req.query.days || '30');
     const since = Math.floor(Date.now() / 1000) - days * 86400;
     const orgId = req.activeOrg;
     const orgFilter = `(orgId = '${orgId}' OR '${orgId}' = 'default')`;
@@ -263,32 +263,134 @@ router.get('/chart', (req, res) => {
         date(timestamp, 'unixepoch') as day,
         COUNT(*) as total,
         SUM(CASE WHEN action = 1 THEN 1 ELSE 0 END) as allowed,
-        SUM(CASE WHEN action = 0 THEN 1 ELSE 0 END) as denied
+        SUM(CASE WHEN action = 0 THEN 1 ELSE 0 END) as denied,
+        COUNT(DISTINCT CASE WHEN actorType='user' THEN actor END) as uniqueUsers,
+        COUNT(DISTINCT ip) as uniqueIps
       FROM requestAuditLog
       WHERE timestamp > ? AND ${orgFilter}
       GROUP BY day ORDER BY day ASC
     `).all(since);
 
     const topUsers = db.prepare(`
-      SELECT actor as email, COUNT(*) as requests
+      SELECT actor as email, COUNT(*) as requests,
+        MAX(timestamp) as lastSeen
       FROM requestAuditLog
-      WHERE actorType = 'user' AND actor != '' AND timestamp > ? AND ${orgFilter}
+      WHERE actorType = 'user' AND actor != '' AND actor IS NOT NULL
+        AND timestamp > ? AND ${orgFilter}
       GROUP BY actor ORDER BY requests DESC LIMIT 10
+    `).all(since);
+
+    const topIps = db.prepare(`
+      SELECT ip, COUNT(*) as requests,
+        SUM(CASE WHEN action = 1 THEN 1 ELSE 0 END) as allowed,
+        SUM(CASE WHEN action = 0 THEN 1 ELSE 0 END) as denied,
+        COUNT(DISTINCT actor) as users
+      FROM requestAuditLog
+      WHERE timestamp > ? AND ${orgFilter} AND ip IS NOT NULL
+      GROUP BY ip ORDER BY requests DESC LIMIT 10
+    `).all(since);
+
+    const topResources = db.prepare(`
+      SELECT r.name as resourceName, r.fullDomain as domain,
+        COUNT(*) as requests,
+        SUM(CASE WHEN l.action = 1 THEN 1 ELSE 0 END) as allowed,
+        SUM(CASE WHEN l.action = 0 THEN 1 ELSE 0 END) as denied
+      FROM requestAuditLog l
+      LEFT JOIN resources r ON l.resourceId = r.resourceId
+      WHERE l.timestamp > ? AND ${orgFilter}
+      GROUP BY l.resourceId ORDER BY requests DESC LIMIT 10
+    `).all(since);
+
+    const authBreakdown = db.prepare(`
+      SELECT
+        CASE
+          WHEN actorType = 'user' THEN 'Platform SSO'
+          WHEN actorType IS NULL AND actor IS NULL THEN 'Session/Whitelist'
+          ELSE actorType
+        END as method,
+        COUNT(*) as count
+      FROM requestAuditLog
+      WHERE timestamp > ? AND ${orgFilter}
+      GROUP BY method ORDER BY count DESC
     `).all(since);
 
     const totals = db.prepare(`
       SELECT
+        COUNT(*) as total,
         SUM(CASE WHEN action = 1 THEN 1 ELSE 0 END) as allowed,
-        SUM(CASE WHEN action = 0 THEN 1 ELSE 0 END) as denied
+        SUM(CASE WHEN action = 0 THEN 1 ELSE 0 END) as denied,
+        COUNT(DISTINCT CASE WHEN actorType='user' THEN actor END) as uniqueUsers,
+        COUNT(DISTINCT ip) as uniqueIps
       FROM requestAuditLog WHERE timestamp > ? AND ${orgFilter}
     `).get(since);
 
+    // Session activity over time (hourly for last 24h, daily for longer)
+    const sessionsByDay = db.prepare(`
+      SELECT date(issuedAt/1000, 'unixepoch') as day, COUNT(*) as sessions
+      FROM resourceSessions
+      WHERE issuedAt > ?
+      GROUP BY day ORDER BY day ASC
+    `).all(since * 1000);
+
     db.close();
 
-    res.json({ accessByDay, topUsers, totals, days });
+    res.json({ accessByDay, topUsers, topIps, topResources, authBreakdown, totals, sessionsByDay, days });
   } catch (err) {
     res.status(503).json({ error: err.message });
   }
+});
+
+// GET/POST /api/activity/retention — manage Pangolin log retention settings
+router.get('/retention', async (req, res) => {
+  try {
+    const db = getPangolinDb();
+    const orgId = req.activeOrg;
+    const org = db.prepare(
+      'SELECT settingsLogRetentionDaysRequest,settingsLogRetentionDaysAccess,settingsLogRetentionDaysAction,settingsLogRetentionDaysConnection FROM orgs WHERE orgId = ?'
+    ).get(orgId) || db.prepare(
+      'SELECT settingsLogRetentionDaysRequest,settingsLogRetentionDaysAccess,settingsLogRetentionDaysAction,settingsLogRetentionDaysConnection FROM orgs LIMIT 1'
+    ).get();
+    db.close();
+    res.json({
+      request:    org?.settingsLogRetentionDaysRequest    ?? 7,
+      access:     org?.settingsLogRetentionDaysAccess     ?? 0,
+      action:     org?.settingsLogRetentionDaysAction     ?? 0,
+      connection: org?.settingsLogRetentionDaysConnection ?? 0,
+    });
+  } catch (err) { res.status(503).json({ error: err.message }); }
+});
+
+router.post('/retention', async (req, res) => {
+  try {
+    const { request, access, action, connection } = req.body;
+    const orgId = req.activeOrg;
+    const apiUrl = process.env.PANGOLIN_API_URL;
+    const apiKey = process.env.PANGOLIN_API_KEY;
+
+    if (!apiUrl || !apiKey) {
+      return res.status(503).json({ error: 'Pangolin API not configured. Connect ZTGuard to Pangolin first.' });
+    }
+
+    const body = {};
+    if (request    !== undefined) body.settingsLogRetentionDaysRequest    = parseInt(request);
+    if (access     !== undefined) body.settingsLogRetentionDaysAccess     = parseInt(access);
+    if (action     !== undefined) body.settingsLogRetentionDaysAction     = parseInt(action);
+    if (connection !== undefined) body.settingsLogRetentionDaysConnection = parseInt(connection);
+
+    const resp = await fetch(`${apiUrl}/org/${orgId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      timeout: 8000,
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return res.status(resp.status).json({ error: `Pangolin API error: ${errText.slice(0, 200)}` });
+    }
+
+    res.json({ ok: true, message: 'Log retention settings updated', ...body });
+  } catch (err) { res.status(503).json({ error: err.message }); }
 });
 
 // GET /api/activity/sessions — active resource sessions with resource name
