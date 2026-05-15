@@ -99,12 +99,52 @@ if pos >= 0:
             count += 1
             print('  Removed enterprise powered-by block')
 
-# Legacy pattern: null==s?void 0:s.visible (supporter key notice, older Pangolin)
+# Supporter key notice — multiple patterns across Pangolin versions
+# Pattern 1: legacy visibility check
 old1 = '(null==s?void 0:s.visible)'
 if old1 in patched:
     patched = patched.replace(old1, 'null', 1)
     count += 1
-    print('  Removed supporter key notice (legacy)')
+    print('  Removed supporter key notice (legacy pattern)')
+
+# Pattern 2: supporter key notice text rendered as div/span (v1.18+)
+# The text "Server is running without a supporter key" is inside a conditional block
+import re as _re
+# Find the supporter key notice container and null it
+for sk_pattern in [
+    'without a supporter key',
+    'supporterKey',
+    'supporter_key',
+    'supportKeyBuy',
+]:
+    sk_idx = patched.find(sk_pattern)
+    if sk_idx >= 0:
+        # Walk back to find the enclosing jsx element start
+        search_start = max(0, sk_idx - 800)
+        # Find the nearest conditional/ternary that wraps the supporter key block
+        # Look for null== pattern or enterprise check before the supporter key text
+        ctx = patched[search_start:sk_idx + 200]
+        # Find the jsx call containing this text and null it
+        jsx_start = ctx.rfind('(0,r.')
+        if jsx_start >= 0:
+            abs_start = search_start + jsx_start
+            # Find matching closing paren
+            depth = 0
+            end_pos = abs_start
+            for ci in range(abs_start, min(abs_start + 1000, len(patched))):
+                if patched[ci] == '(': depth += 1
+                elif patched[ci] == ')':
+                    depth -= 1
+                    if depth == 0:
+                        end_pos = ci + 1
+                        break
+            if end_pos > abs_start:
+                fragment = patched[abs_start:end_pos]
+                if len(fragment) < 800:  # safety: don't null huge blocks
+                    patched = patched[:abs_start] + 'null' + patched[end_pos:]
+                    count += 1
+                    print(f'  Removed supporter key block (pattern: {sk_pattern})')
+                    break
 
 print(f'  Total patches applied: {count}')
 with open('$AUTH_CHUNK_PATCHED', 'w') as f:
