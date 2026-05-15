@@ -5,7 +5,7 @@
 # server. Run as root on the same VPS as your Pangolin installation.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/DialogueDynamicsAI/ZTGUARD-DASHBOARD/main/install.sh | bash
+#   curl -fsSL "https://raw.githubusercontent.com/DialogueDynamicsAI/ZTGUARD-DASHBOARD/main/Complete%20scripted%20installation/install.sh" | bash
 #   # or
 #   bash install.sh
 # =============================================================================
@@ -45,6 +45,17 @@ command -v docker   >/dev/null 2>&1 || error "Docker is not installed. Install i
 command -v python3  >/dev/null 2>&1 || error "Python3 is required. Install: apt install -y python3"
 command -v openssl  >/dev/null 2>&1 || error "OpenSSL is required. Install: apt install -y openssl"
 success "Prerequisites OK"
+
+# ── Ensure hairpin NAT so ZTGuard can reach Pangolin via public HTTPS URL ─────
+# Without this, Docker containers can't connect back to the host's own public IP
+SERVER_IP=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+if [[ -n "$SERVER_IP" ]]; then
+    iptables -t nat -A POSTROUTING -s 172.18.0.0/16 -d "$SERVER_IP" -j MASQUERADE 2>/dev/null || true
+    iptables -I FORWARD 1 -s 172.18.0.0/16 -j ACCEPT 2>/dev/null || true
+    # Persist if iptables-persistent is available
+    iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    info "Hairpin NAT configured for $SERVER_IP"
+fi
 
 # ── Detect Pangolin installation ──────────────────────────────────────────────
 step "Detecting Pangolin installation..."
@@ -224,7 +235,7 @@ done
 if [[ -z "$PATCH_SCRIPT" ]]; then
     PATCH_SCRIPT="/tmp/ztguard-patch-branding-$$.sh"
     info "Downloading patch-branding.sh from GitHub..."
-    if curl -fsSL "${REPO_URL}/raw/main/install/patch-branding.sh" -o "$PATCH_SCRIPT" 2>/dev/null; then
+    if curl -fsSL "${REPO_URL}/raw/main/Complete%20scripted%20installation/install/patch-branding.sh" -o "$PATCH_SCRIPT" 2>/dev/null; then
         sed -i 's/\r//' "$PATCH_SCRIPT"  # strip Windows CRLF if present
         chmod +x "$PATCH_SCRIPT"
     else
@@ -238,7 +249,7 @@ if [[ -n "$PATCH_SCRIPT" ]]; then
     bash "$PATCH_SCRIPT" "$PANGOLIN_DIR" "$BRANDING_DIR" "pangolin" || \
         warn "Branding patch had warnings — continuing"
 else
-    warn "Branding patches skipped — apply later: curl -fsSL ${REPO_URL}/raw/main/install/patch-branding.sh | bash -s $PANGOLIN_DIR $BRANDING_DIR"
+    warn "Branding patches skipped — apply later: curl -fsSL \"${REPO_URL}/raw/main/Complete%20scripted%20installation/install/patch-branding.sh\" | bash -s $PANGOLIN_DIR $BRANDING_DIR"
 fi
 
 # Update PANGOLIN_CSS_PATH with actual hash

@@ -221,20 +221,25 @@ router.post('/discover', async (req, res) => {
   }
 });
 
-// POST /api/connection/test — test the saved API key
+// POST /api/connection/test — test the saved API key via public URL
 router.post('/test', async (req, res) => {
   const cfg = getConfig();
   if (!cfg.pangolin_url || !cfg.pangolin_api_key) {
     return res.status(400).json({ ok: false, error: 'Server URL and API key are required' });
   }
 
-  const publicBase = cfg.pangolin_url.replace(/\/$/, '') + '/v1';
+  const apiBase = cfg.pangolin_url.replace(/\/$/, '') + '/v1';
   const orgId = cfg.pangolin_org_id;
-  const headers = { Authorization: `Bearer ${cfg.pangolin_api_key}` };
+  const https = require('https');
+  const agent = new https.Agent({ rejectUnauthorized: false });
 
   try {
     const start = Date.now();
-    const { response: resp, url } = await fetchWithFallback(`/v1/org/${orgId}`, { headers }, publicBase);
+    const resp = await fetch(`${apiBase}/org/${orgId}`, {
+      headers: { Authorization: `Bearer ${cfg.pangolin_api_key}` },
+      agent,
+      timeout: 10000,
+    });
     const latency = Date.now() - start;
 
     if (resp.status === 401) return res.json({ ok: false, error: 'API key rejected (401)', latency });
@@ -243,10 +248,17 @@ router.post('/test', async (req, res) => {
 
     const data = await resp.json();
     const orgName = data.data?.org?.name || data.org?.name || orgId;
-    const via = url.includes('pangolin:3003') ? 'internal' : 'public';
-    res.json({ ok: true, org_name: orgName, latency, message: `Connected to org "${orgName}" in ${latency}ms (via ${via})` });
+    res.json({ ok: true, org_name: orgName, latency, message: `Connected to org "${orgName}" in ${latency}ms` });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    // If public URL fails (hairpin NAT), suggest the issue
+    const isHairpin = err.message.includes('timeout') || err.message.includes('ECONNREFUSED');
+    res.json({
+      ok: false,
+      error: err.message,
+      hint: isHairpin
+        ? 'Network timeout — ensure DNS for this domain resolves to the server IP and the /v1 Traefik route is configured.'
+        : undefined,
+    });
   }
 });
 

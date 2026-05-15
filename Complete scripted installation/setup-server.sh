@@ -79,8 +79,19 @@ fi
 
 # ── Install base packages ─────────────────────────────────────────────────────
 step "Installing base packages..."
-apt-get install -y curl wget git openssl python3 -qq 2>/dev/null
+apt-get install -y curl wget git openssl python3 iptables-persistent -qq 2>/dev/null
 success "Base packages ready"
+
+# ── Add hairpin NAT iptables rules ────────────────────────────────────────────
+# Allows Docker containers to reach the host's own public IP (needed for
+# ZTGuard → Pangolin HTTPS API calls within the same server)
+step "Configuring hairpin NAT for Docker containers..."
+SERVER_IP=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+iptables -t nat -A POSTROUTING -s 172.18.0.0/16 -d "$SERVER_IP" -j MASQUERADE 2>/dev/null || true
+iptables -I FORWARD 1 -s 172.18.0.0/16 -j ACCEPT 2>/dev/null || true
+# Persist rules across reboots
+iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+success "Hairpin NAT configured (containers can reach host's public IP)"
 
 # ── Create Pangolin directories ───────────────────────────────────────────────
 step "Creating Pangolin directories..."

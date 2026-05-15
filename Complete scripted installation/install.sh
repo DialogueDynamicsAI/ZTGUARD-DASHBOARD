@@ -46,6 +46,17 @@ command -v python3  >/dev/null 2>&1 || error "Python3 is required. Install: apt 
 command -v openssl  >/dev/null 2>&1 || error "OpenSSL is required. Install: apt install -y openssl"
 success "Prerequisites OK"
 
+# ── Ensure hairpin NAT so ZTGuard can reach Pangolin via public HTTPS URL ─────
+# Without this, Docker containers can't connect back to the host's own public IP
+SERVER_IP=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+if [[ -n "$SERVER_IP" ]]; then
+    iptables -t nat -A POSTROUTING -s 172.18.0.0/16 -d "$SERVER_IP" -j MASQUERADE 2>/dev/null || true
+    iptables -I FORWARD 1 -s 172.18.0.0/16 -j ACCEPT 2>/dev/null || true
+    # Persist if iptables-persistent is available
+    iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    info "Hairpin NAT configured for $SERVER_IP"
+fi
+
 # ── Detect Pangolin installation ──────────────────────────────────────────────
 step "Detecting Pangolin installation..."
 
