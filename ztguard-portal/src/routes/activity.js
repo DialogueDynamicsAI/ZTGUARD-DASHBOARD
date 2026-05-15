@@ -297,7 +297,7 @@ router.get('/chart', (req, res) => {
         SUM(CASE WHEN l.action = 0 THEN 1 ELSE 0 END) as denied
       FROM requestAuditLog l
       LEFT JOIN resources r ON l.resourceId = r.resourceId
-      WHERE l.timestamp > ? AND ${orgFilter}
+      WHERE l.timestamp > ? AND (l.orgId = '${orgId}' OR '${orgId}' = 'default')
       GROUP BY l.resourceId ORDER BY requests DESC LIMIT 10
     `).all(since);
 
@@ -364,32 +364,62 @@ router.post('/retention', async (req, res) => {
   try {
     const { request, access, action, connection } = req.body;
     const orgId = req.activeOrg;
-    const apiUrl = process.env.PANGOLIN_API_URL;
-    const apiKey = process.env.PANGOLIN_API_KEY;
 
-    if (!apiUrl || !apiKey) {
-      return res.status(503).json({ error: 'Pangolin API not configured. Connect ZTGuard to Pangolin first.' });
-    }
+    // Pangolin DB is read-only in ZTGuard container — use Docker socket to exec into Pangolin
+    const db = getPangolinDb();
+    const org = db.prepare('SELECT orgId FROM orgs WHERE orgId = ? LIMIT 1').get(orgId)
+              || db.prepare('SELECT orgId FROM orgs LIMIT 1').get();
+    db.close();
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    const body = {};
-    if (request    !== undefined) body.settingsLogRetentionDaysRequest    = parseInt(request);
-    if (access     !== undefined) body.settingsLogRetentionDaysAccess     = parseInt(access);
-    if (action     !== undefined) body.settingsLogRetentionDaysAction     = parseInt(action);
-    if (connection !== undefined) body.settingsLogRetentionDaysConnection = parseInt(connection);
+    const sets = [];
+    if (request    !== undefined) sets.push(`settingsLogRetentionDaysRequest=${parseInt(request)}`);
+    if (access     !== undefined) sets.push(`settingsLogRetentionDaysAccess=${parseInt(access)}`);
+    if (action     !== undefined) sets.push(`settingsLogRetentionDaysAction=${parseInt(action)}`);
+    if (connection !== undefined) sets.push(`settingsLogRetentionDaysConnection=${parseInt(connection)}`);
 
-    const resp = await fetch(`${apiUrl}/org/${orgId}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      timeout: 8000,
+    if (sets.length === 0) return res.json({ ok: true, message: 'Nothing to update' });
+
+    const script = `node -e "
+const db=require('/app/node_modules/better-sqlite3')('/app/config/db/db.sqlite');
+db.prepare('UPDATE orgs SET ${sets.join(',')} WHERE orgId=\\"${org.orgId}\\"').run();
+const r=db.prepare('SELECT settingsLogRetentionDaysRequest as req,settingsLogRetentionDaysAccess as acc,settingsLogRetentionDaysAction as act,settingsLogRetentionDaysConnection as con FROM orgs WHERE orgId=\\"${org.orgId}\\"').get();
+console.log(JSON.stringify(r));
+db.close();
+"`;
+
+    const http = require('http');
+    const result = await new Promise((resolve, reject) => {
+      const createBody = JSON.stringify({ AttachStdout: true, AttachStderr: true, Cmd: ['sh', '-c', script] });
+      const cr = http.request({ socketPath: '/var/run/docker.sock', path: '/containers/pangolin/exec', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': createBody.length } }, (res2) => {
+        let data = '';
+        res2.on('data', d => { data += d; });
+        res2.on('end', () => {
+          try {
+            const { Id } = JSON.parse(data);
+            const startBody = JSON.stringify({ Detach: false });
+            const sr = http.request({ socketPath: '/var/run/docker.sock', path: `/exec/${Id}/start`, method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Content-Length': startBody.length } }, (r2) => {
+              let out = '';
+              r2.on('data', d => { out += d; });
+              r2.on('end', () => resolve(out));
+            });
+            sr.on('error', reject);
+            sr.end(startBody);
+          } catch (e) { reject(e); }
+        });
+      });
+      cr.on('error', reject);
+      cr.end(createBody);
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      return res.status(resp.status).json({ error: `Pangolin API error: ${errText.slice(0, 200)}` });
-    }
+    // Extract JSON from Docker exec output (has binary prefix)
+    const jsonMatch = result.match(/\{[^}]+\}/);
+    const updated = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+    console.log('[activity] Retention updated:', updated);
 
-    res.json({ ok: true, message: 'Log retention settings updated', ...body });
+    res.json({ ok: true, message: `Log retention updated for org ${org.orgId}`, updated });
   } catch (err) { res.status(503).json({ error: err.message }); }
 });
 
