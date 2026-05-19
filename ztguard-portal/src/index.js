@@ -18,6 +18,7 @@ const alertingRoutes = require('./routes/alerting');
 const { router: connectionRoutes, getConfig, applyConfig } = require('./routes/connection');
 const mailRoutes = require('./routes/mail');
 const securityRoutes = require('./routes/security');
+const idpRoutes = require('./routes/idp');
 const { startPoller } = require('./poller');
 const { startAlerter } = require('./alerter');
 
@@ -105,6 +106,7 @@ app.use(BASE + '/api/activity',     requireAuth, injectActiveOrg, activityRoutes
 app.use(BASE + '/api/branding',     requireAuth, injectActiveOrg, brandingRoutes);
 app.use(BASE + '/api/mail',         requireAuth, mailRoutes);
 app.use(BASE + '/api/security',    requireAuth, securityRoutes);
+app.use(BASE + '/api/idp',         requireAuth, idpRoutes);
 
 // ── API: status ───────────────────────────────────────────────────────────────
 app.get(BASE + '/api/status', requireAuth, injectActiveOrg, (req, res) => {

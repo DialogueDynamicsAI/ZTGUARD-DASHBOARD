@@ -12,6 +12,7 @@ const PAGE_META = {
   'mail-relay':       { title: 'Mail Relay',          sub: 'SMTP configuration for Pangolin email notifications' },
   'account':          { title: 'Account & Security',  sub: 'Password, two-factor authentication' },
   'security':         { title: 'Security',            sub: 'Pangolin access control — registration and signup settings' },
+  'idp':              { title: 'Identity Providers',  sub: 'Configure SSO via Google, Azure Entra ID, or any OIDC provider' },
 };
 
 let currentPage = 'dashboard';
@@ -49,6 +50,7 @@ function navigate(page) {
   if (page === 'mail-relay')       initMailRelay();
   if (page === 'account')          initAccount();
   if (page === 'security')         initSecurity();
+  if (page === 'idp')              initIdp();
 
   history.pushState({}, '', `${BASE}/${page === 'dashboard' ? '' : page}`);
 }
