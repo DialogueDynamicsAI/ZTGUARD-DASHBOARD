@@ -482,15 +482,50 @@ async function renderOverviewCharts(container) {
           ${authBreakdown.length === 0 ? noDataMsg :
             authBreakdown.map(a => `
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                <span style="font-size:12px;font-weight:600">${escHtml(a.method||'Unknown')}</span>
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="width:100px;height:6px;background:#f1f5f9;border-radius:3px">
-                    <div style="height:6px;background:#2563eb;border-radius:3px;width:${Math.round((a.count/totalReq)*100)}%"></div>
+                <div style="flex:1;min-width:0">
+                  <span style="font-size:12px;font-weight:600">${escHtml(a.method||'Unknown')}</span>
+                  <div style="font-size:10px;color:#94a3b8">${a.requestCount} HTTP requests · ${a.uniqueIps} unique IPs</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-left:12px">
+                  <div style="width:80px;height:6px;background:#f1f5f9;border-radius:3px">
+                    <div style="height:6px;background:#2563eb;border-radius:3px;width:${Math.round((a.requestCount/totalReq)*100)}%"></div>
                   </div>
-                  <span style="font-size:12px;color:#6b7280;min-width:40px;text-align:right">${a.count}</span>
                 </div>
               </div>`).join('')}
         </div>
+      </div>
+    </div>
+
+      <!-- Row 2b: Login Sessions (billing view) -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <h3>Login Sessions (Billing View)</h3>
+        <span style="font-size:11px;color:#94a3b8">Each session = one user visit/login. Use this for invoicing — not the raw request count above.</span>
+      </div>
+      <div class="card-body" style="padding:0">
+        ${(data.sessionsByType || []).length === 0
+          ? `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px">No sessions in this period.</div>`
+          : `<table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:8px 14px;text-align:left;color:#374151;font-weight:600">Auth Method</th>
+              <th style="padding:8px 14px;text-align:right;color:#374151;font-weight:600">Total Sessions</th>
+              <th style="padding:8px 14px;text-align:right;color:#374151;font-weight:600">Full Logins</th>
+              <th style="padding:8px 14px;text-align:left;color:#374151;font-weight:600">Notes</th>
+            </tr></thead>
+            <tbody>${(data.sessionsByType || []).map(s => `
+              <tr style="border-bottom:1px solid #f1f5f9">
+                <td style="padding:8px 14px;font-weight:600">${escHtml(s.sessionType)}</td>
+                <td style="padding:8px 14px;text-align:right;font-size:16px;font-weight:700;color:#2563eb">${s.sessions}</td>
+                <td style="padding:8px 14px;text-align:right;color:#64748b">${s.fullSessions}</td>
+                <td style="padding:8px 14px;font-size:11px;color:#94a3b8">
+                  ${s.sessionType.includes('OTP') || s.sessionType.includes('Whitelist')
+                    ? 'Email domain validated — no individual email in log'
+                    : s.sessionType.includes('SSO')
+                    ? 'Individual email captured — use Users tab for billing'
+                    : ''}
+                </td>
+              </tr>`).join('')}</tbody>
+          </table>`}
       </div>
     </div>
 

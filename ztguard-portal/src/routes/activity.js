@@ -304,15 +304,42 @@ router.get('/chart', (req, res) => {
     const authBreakdown = db.prepare(`
       SELECT
         CASE
-          WHEN actorType = 'user' THEN 'Platform SSO'
-          WHEN actorType IS NULL AND actor IS NULL THEN 'Session/Whitelist'
-          ELSE actorType
+          WHEN actorType = 'user' THEN 'Platform SSO (individual email tracked)'
+          WHEN actorType = 'client' THEN 'Client / Device'
+          WHEN actorType IS NOT NULL THEN actorType
+          ELSE 'Session / OTP Whitelist'
         END as method,
-        COUNT(*) as count
+        COUNT(*) as requestCount,
+        COUNT(DISTINCT ip) as uniqueIps
       FROM requestAuditLog
       WHERE timestamp > ? AND ${orgFilter}
-      GROUP BY method ORDER BY count DESC
+      GROUP BY
+        CASE
+          WHEN actorType = 'user' THEN 'Platform SSO (individual email tracked)'
+          WHEN actorType = 'client' THEN 'Client / Device'
+          WHEN actorType IS NOT NULL THEN actorType
+          ELSE 'Session / OTP Whitelist'
+        END
+      ORDER BY requestCount DESC
     `).all(since);
+
+    // Session-based stats (logins, not requests — better for billing)
+    const sessionsByType = db.prepare(`
+      SELECT
+        CASE
+          WHEN userSessionId IS NOT NULL THEN 'Platform SSO login'
+          WHEN whitelistId IS NOT NULL THEN 'OTP / Whitelist login'
+          WHEN passwordId IS NOT NULL THEN 'Password login'
+          WHEN pincodeId IS NOT NULL THEN 'PIN Code login'
+          WHEN accessTokenId IS NOT NULL THEN 'Access Token'
+          ELSE 'Anonymous session'
+        END as sessionType,
+        COUNT(*) as sessions,
+        COUNT(CASE WHEN isRequestToken = 0 THEN 1 END) as fullSessions
+      FROM resourceSessions
+      WHERE issuedAt > ?
+      GROUP BY sessionType ORDER BY sessions DESC
+    `).all(since * 1000);
 
     const totals = db.prepare(`
       SELECT
@@ -334,7 +361,7 @@ router.get('/chart', (req, res) => {
 
     db.close();
 
-    res.json({ accessByDay, topUsers, topIps, topResources, authBreakdown, totals, sessionsByDay, days });
+    res.json({ accessByDay, topUsers, topIps, topResources, authBreakdown, totals, sessionsByDay, sessionsByType, days });
   } catch (err) {
     res.status(503).json({ error: err.message });
   }
